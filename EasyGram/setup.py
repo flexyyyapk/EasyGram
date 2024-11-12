@@ -15,5 +15,5 @@ setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.7',
-    url='https://github.com/flexyyyapk/EasyGram/tree/main'
+    url='https://github.com/flexyyyapk/EasyGram/'
 )
