@@ -3,6 +3,8 @@
 pip install git+https://github.com/flexyyyapk/EasyGram.git
 ```
 
+## Быстрый старт
+
 #### Эхо бот(синхронный)
 ```python
 from EasyGram import SyncBot, types
