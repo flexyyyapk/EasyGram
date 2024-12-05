@@ -24,7 +24,7 @@ class ReplyKeyboardMarkup:
     :param resize_keyboard: resize keyboard
     """
     def __init__(self, row_width: int=3, resize_keyboard: bool=False):
-        self.keyboards = []
+        self.rows = []
         self.row_width = row_width
         self.resize_keyboard = resize_keyboard
 
@@ -43,11 +43,11 @@ class ReplyKeyboardMarkup:
                 _butt.append({'text': butt})
 
             if len(_butt) == self.row_width:
-                self.keyboards.append(_butt)
+                self.rows.append(_butt)
                 _butt = []
         else:
             if _butt:
-                self.keyboards.append(_butt)
+                self.rows.append(_butt)
 
 class InlineKeyboardButton:
     def __init__(self, text: Union[int, float, str], url: str=None, callback_data: str=None):
@@ -66,7 +66,7 @@ class InlineKeyboardButton:
 
 class InlineKeyboardMarkup:
     def __init__(self, row_width: int=3):
-        self.keyboards = []
+        self.rows = []
         self.row_width = row_width
 
     def add(self, *args: InlineKeyboardButton) -> None:
@@ -82,11 +82,11 @@ class InlineKeyboardMarkup:
                 _butt.append({'text': butt.keyboard['text']})
 
             if len(_butt) == self.row_width:
-                self.keyboards.append(_butt)
+                self.rows.append(_butt)
                 _butt = []
         else:
             if _butt:
-                self.keyboards.append(_butt)
+                self.rows.append(_butt)
 
 class Message:
     """
