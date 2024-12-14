@@ -110,7 +110,6 @@ class ExampleBot:
         return {"ok": True}, 200
 
     def get_commands(self):
-        print(self.commands)
         if self.commands:
             return self.commands, 200
         else: return '', 204
