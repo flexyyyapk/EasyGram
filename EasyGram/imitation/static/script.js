@@ -87,7 +87,7 @@ function get_response() {
 			'Content-Type': 'application/json',
 		},
 	}).then(response => {
-		if (response.status === 204) return; // Если нет данных, выходим
+		if (response.status === 204) return;
 		return response.json();
 	}).then(data => {
 		if (data && data.updates) {
@@ -164,5 +164,4 @@ function sendCommand(command){
 	butt.innerText = '/ меню'
 }
 
-// Устанавливаем интервал отдельно
 setInterval(get_response, 1000);
