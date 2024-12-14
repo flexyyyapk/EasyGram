@@ -229,11 +229,11 @@
 #description {
 	font-size: 12px;
     font-family: 'Roboto', sans-serif;
-    overflow: hidden; /* Скрыть текст, выходящий за границы */
-    text-overflow: ellipsis; /* Добавить "..." */
-    display: -webkit-box; /* Используем flex-боксы для многострочного текста */
-    -webkit-line-clamp: 2; /* Количество строк, после которых обрезать текст */
-    -webkit-box-orient: vertical; /* Установка направления блока */
-    word-wrap: break-word; /* Перенос длинных слов */
-    line-height: 1.2; /* Высота строки для управления высотой блока */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-wrap: break-word;
+    line-height: 1.2;
 }
