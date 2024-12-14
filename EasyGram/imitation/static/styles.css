@@ -1,0 +1,239 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+.container {
+	display: flex;
+	width: 100%;
+	height: 97vh;
+}
+
+#options {
+	top: 0px;
+	left: 0px;
+	width: 5%;
+	height: 100%;
+	border: 0.5px solid black;
+	background: #293A4C;
+}
+
+#chats {
+	top: 0px;
+	left: 0px;
+	width: 20%;
+	height: 100%;
+	border: 0.5px solid black;
+	background: white;
+}
+
+#chat {
+	top: 0px;
+	left: 0px;
+	width: 75%;
+	height: 100%;
+	border: 0.5px solid black;
+	background: lightgray;
+}
+
+.inputs {
+	display: flex;
+}
+
+#inputText {
+	position: absolute;
+	width: 890px;
+	height: 35px;
+	resize: none;
+	top: calc(100% - 71px);
+	margin-left: 124px;
+	outline: none;
+	font-family: 'Roboto', sans-serif;
+}
+
+#sendMessage {
+	position: absolute;
+	width: 55px;
+	height: 39px;
+	top: calc(100% - 71px);
+	margin-left: 1019px;
+	border: 1px solid black;
+	border-top-right-radius: 15px;
+	border-bottom-right-radius: 15px;
+	border-width: 1px;
+	border-left: none;
+	background: white;
+	background-image: url('../static/send_button.png');
+	background-size: 35px;
+	background-repeat: no-repeat;
+	background-position: center;
+	font-family: 'Roboto', sans-serif;
+}
+
+#sendMessage:hover::after {
+	background-color: lightgray;
+	content: '';
+    position: absolute;
+    left: 10px;
+    top: 2px;
+    background-color: rgba(211, 211, 211, 0.5);
+    z-index: 1;
+    border-radius: 15px;
+    width: 35px;
+    height: 35px;
+}
+
+.history {
+	width: 100%;
+	height: 620px;
+	overflow-y: scroll;
+}
+
+.bot {
+	width: auto;
+	min-width: 120px;
+	max-width: 545px;
+    border-bottom: 1px solid #ddd;
+    min-height: 40px;
+    background: lightcyan;
+	border-top-left-radius: 15px;
+	border-top-right-radius: 15px;
+	border-bottom-right-radius: 15px;
+	word-wrap: break-word;
+	font-family: 'Roboto', sans-serif;
+	padding: 10px;
+	margin-top: 10px;
+	overflow-wrap: anywhere;
+}
+
+.user {
+	width: auto;
+	justify-content: flex-end;
+	margin-left: auto;
+	max-width: 365px;
+	min-width: 120px;
+    border-bottom: 1px solid #ddd;
+    min-height: 40px;
+    background: lightcyan;
+    border-bottom-left-radius: 15px;
+	border-top-left-radius: 15px;
+	border-top-right-radius: 15px;
+	word-wrap: break-word;
+	font-family: 'Roboto', sans-serif;
+	padding: 10px;
+	margin-top: 10px;
+	overflow-wrap: anywhere;
+}
+
+.commands {
+	width: 90px;
+	height: 39px;
+	background: white;
+	margin-top: 3px;
+	border: 1px solid;
+	margin-left: 34px;
+	border-right: none;
+	z-index: 1;
+	border-top-left-radius: 15px;
+	border-bottom-left-radius: 15px;
+}
+
+#showCommands {
+	width: 80px;
+	height: 25px;
+	border-radius: 10px;
+	background: red;
+	margin-top: 5px;
+	margin-left: 5px;
+}
+
+#textMenu {
+	width: 30px;
+	height: 20px;
+	z-index: 1;
+}
+
+.listCommands {
+	position: absolute;
+	display: none;
+	width: 1015px;
+	height: 150px;
+	background: black;
+	top: 480px;
+	left: 435px;
+	border-radius: 15px;
+	background: white;
+	border: 1px solid;
+	overflow-y: scroll;
+}
+
+.command {
+	width: 100%;
+	min-height: 20px;
+	border: none;
+	text-align: left;
+	font-size: 20px;
+	max-width: 100%;
+	overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.command:hover {
+	background: rgb(200, 200, 200);
+}
+
+#youRbot {
+	width: 100%;
+	height: 86px;
+	border: 1px solid;
+	border-right: none;
+	border-left: none;
+	background: white;
+}
+
+#photo {
+    margin-top: 5%;
+    width: 60px;
+    height: 60px;
+    border: 1px solid;
+    border-radius: 50%;
+    background: 
+        url('bot_icon.png') center no-repeat,
+        linear-gradient(135deg, #6cb2f7, #b3dafe);
+    background-size: 50% auto, cover;
+}
+
+.infoBot {
+	position: absolute;
+	width: 200px;
+	height: 70px;
+	background: white;
+	top: 15px;
+	margin-left: 75px;
+}
+
+#name {
+	font-size: 16px;
+	font-weight: bolder;
+	font-family: 'Roboto', sans-serif;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+#username {
+	font-size: 12px;
+	font-family: 'Roboto', sans-serif;
+	text-overflow: ellipsis;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+#description {
+	font-size: 12px;
+    font-family: 'Roboto', sans-serif;
+    overflow: hidden; /* Скрыть текст, выходящий за границы */
+    text-overflow: ellipsis; /* Добавить "..." */
+    display: -webkit-box; /* Используем flex-боксы для многострочного текста */
+    -webkit-line-clamp: 2; /* Количество строк, после которых обрезать текст */
+    -webkit-box-orient: vertical; /* Установка направления блока */
+    word-wrap: break-word; /* Перенос длинных слов */
+    line-height: 1.2; /* Высота строки для управления высотой блока */
+}
