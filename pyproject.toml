@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "EasyGram"
 version = "0.0.2"
 description = "Библиотека для удобного и многофункционального(в будущем) использования."
+long-description = "file: README.md"
+long-description-content-type = "text/markdown"
 author = "flexyyy"
 dependencies = [
     "aiohttp",
