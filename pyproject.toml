@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "EasyGram"
+version = "0.0.2"
+description = "Библиотека для удобного и многофункционального(в будущем) использования."
+author = "flexyyy"
+dependencies = [
+    "aiohttp",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/flexyyyapk/EasyGram/"
