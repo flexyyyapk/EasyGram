@@ -1,6 +1,6 @@
 Установить:
 ```bash
-pip install git+https://github.com/flexyyyapk/EasyGram.git
+pip install EasyGram
 ```
 
 ## Быстрый старт
