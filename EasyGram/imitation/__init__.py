@@ -15,15 +15,21 @@ BotCommandScopeAllChatAdministrators,
 BotCommandScopeChatMember,
 BotCommandScopeAllGroupChats,
 BotCommandScopeAllPrivateChats,
-BotCommandScopeChatAdministrators
+BotCommandScopeChatAdministrators,
+InputFile,
+InputPollOption
 )
+from ..exception import Telegram
 from concurrent.futures import ThreadPoolExecutor
 import time
+import webbrowser
+import base64
+import traceback
 
 class ExampleBot:
     app = Flask(__name__)
 
-    def __init__(self, token: str, user_id: int=random.randint(1000, 999999), first_name: str='User', last_name: str='Durov', user_name: str='oprosmenya'):
+    def __init__(self, token: str, user_id: int=random.randint(1000, 999999), first_name: str='User', last_name: str='Durov', user_name: str='oprosmenya', autoOpen: bool=True):
         self._message_handler = []
         self.client_updates = [] # Обновления для стороны клиента(сайта)
         self.updates = [] # Обновления для стороны бота(серверная часть)
@@ -35,6 +41,8 @@ class ExampleBot:
         self.first_name = first_name
         self.last_name = last_name
         self.username = user_name
+        
+        self.autoOpen = autoOpen
 
         self.app.add_url_rule('/', 'main', self.main)
         self.app.add_url_rule('/getUpdates', 'get_updates', self.get_updates, methods=['GET'])
@@ -83,6 +91,7 @@ class ExampleBot:
     def _send_message(self):
         data = request.json
 
+        self.message_id += 1
         self.updates.append({
             'update_id': random.randint(10000, 9999999),
             'message': {
@@ -104,12 +113,12 @@ class ExampleBot:
                 'text': data['text']
             }
         })
-        self.message_id += 1
         self._polling()
 
-        return {"ok": True}, 200
+        return {"ok": True, "message_id": self.message_id-1}, 200
 
     def get_commands(self):
+        print(self.commands)
         if self.commands:
             return self.commands, 200
         else: return '', 204
@@ -119,10 +128,11 @@ class ExampleBot:
             self._message_handler.append({"_filters": _filters, "func": func, "content_types": content_types, "commands": commands})
         return wrapper
 
-    def send_message(self, chat_id: Union[int, str], text: Union[int, float, str], reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: Union[str, ParseMode]=None) -> Message:
-        self.client_updates.append({"message": {"text": str(text),"parse_mode": parse_mode}})
+    def send_message(self, chat_id: Union[int, str], text: Union[int, float, str], reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: Union[str, ParseMode]=None, reply_to_message_id: int=None) -> Message:
+        self.message_id += 1
+        self.client_updates.append({"message": {"message_id": self.message_id+1, "text": str(text),"parse_mode": parse_mode, "reply_to_message_id": reply_to_message_id}})
 
-        return Message({"message": {"text": str(text),"parse_mode": parse_mode}}, self)
+        return Message({"text": str(text),"parse_mode": parse_mode, "message_id": self.message_id}, self)
 
     def get_me(self):
         ...
@@ -130,11 +140,18 @@ class ExampleBot:
     def set_my_commands(self, commands: List[BotCommand], scope: Union[BotCommandScopeChat, BotCommandScopeDefault, BotCommandScopeChatMember, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChatAdministrators, BotCommandScopeAllChatAdministrators]=None, language_code: str=None) -> bool:
         self.commands.extend([{"command": command.command, "description": command.description} for command in commands])
 
-    def send_photo(self):
-        ...
+    def send_photo(self, chat_id: Union[int, str], photo: Union[InputFile], caption: Union[int, float, str]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: Union[str, ParseMode]=None, reply_to_message_id: int=None):
+        _photo = base64.b64encode(photo.file.getvalue()).decode('utf-8')
 
-    def message_handler(self) -> Callable:
-        ...
+        self.message_id += 1
+        self.client_updates.append({"photo": {"message_id": self.message_id, "photo": _photo, "reply_to_message_id": reply_to_message_id, "caption": caption}})
+        
+        return Message({"text": str(caption), "parse_mode": parse_mode, "message_id": self.message_id}, self)
+
+    def message_handler(self, _filters: Callable=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None) -> Callable:
+        def wrapper(func):
+            self._message_handler.append({"func": func, "filters": _filters, "content_types": content_types, "commands": commands})
+        return wrapper
 
     def callback_query(self) -> Callable:
         ...
@@ -145,14 +162,52 @@ class ExampleBot:
     def answer_callback_query(self) -> bool:
         ...
 
-    def delete_message(self) -> bool:
-        ...
+    def delete_message(self, chat_id: Union[int, str], message_id: int) -> bool:
+        self.client_updates.append({"delete_message": {"message_id": message_id}})
 
-    def edit_message_text(self) -> bool:
-        ...
+        return True
 
-    def send_poll(self) -> Message:
-        ...
+    def edit_message_text(self, chat_id: Union[int, str], message_id: int, text: Union[int, float, str], parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> bool:
+        self.client_updates.append({"edit_message_text": {"message_id": message_id, "text": text, "parse_mode": parse_mode}})
+
+        return True
+
+    def send_poll(self, chat_id: Union[int, str], question: Union[int, float, str], options: Union[List[InputPollOption], List[str]], question_parse_mode: Union[str, ParseMode]=None, is_anonymous: bool=True, type: str='regular', allows_multiple_answers: bool=False, correct_option_id: int=0, explanation: str=None, explanation_parse_mode: Union[str, ParseMode]=None, open_period: int=None, is_closed: bool=False, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
+        self.message_id += 1
+        parameters = {
+            "question": question,
+            "options": [],
+            "type": type,
+            "allows_multiple_answers": allows_multiple_answers,
+            "correct_option_id": correct_option_id,
+            "explanation": explanation,
+            "open_period": open_period,
+            "is_closed": is_closed,
+            "reply_to_message_id": reply_to_message_id,
+            "message_id": self.message_id
+        }
+
+        if len(options) < 2:
+            try:
+                raise Telegram('В списке параметра options должно быть минимум 2 элемента.')
+            except Telegram as e:
+                traceback.print_exc(e)
+        elif len(options) > 10:
+            try:
+                raise Telegram('В списке параметра options должно быть максимум 10 элементов.')
+            except Telegram as e:
+                traceback.print_exc(e)
+        else:
+            for option in options:
+                if isinstance(option, InputPollOption):
+                    parameters['options'].append({"text": option.text})
+                else:
+                    parameters['options'].append({"text": option})
+        
+        self.message_id += 1
+        self.client_updates.append({"poll": parameters})
+
+        return Message({"message_id": self.message_id}, self)
 
     def _polling(self):
         for i in range(len(self.updates)):
@@ -170,6 +225,7 @@ class ExampleBot:
                                        message_handler['commands']):
                                 continue
                         elif isinstance(message_handler['commands'], str):
+                            print(update['message']['text'])
                             if not update['message']['text'].split()[0] == '/' + message_handler['commands']:
                                 continue
 
@@ -177,7 +233,7 @@ class ExampleBot:
                         if not update['message'].get(message_handler['content_types'], False):
                             continue
                     elif isinstance(message_handler['content_types'], list):
-                        if not any(update['message'].get(__type, False) for message_handler['content_types'] in __type):
+                        if not any(update['message'].get(__type, False) for __type in message_handler['content_types']):
                             continue
 
                     message = Message(update['message'], self)
@@ -187,4 +243,5 @@ class ExampleBot:
                     break
 
     def polling(self):
+        webbrowser.open('http://127.0.0.1:5000/')
         self.app.run('0.0.0.0', 5000, False)

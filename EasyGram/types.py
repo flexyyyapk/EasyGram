@@ -5,6 +5,7 @@ from .exception import ButtonParameterErorr, Telegram
 import traceback
 from io import BytesIO, IOBase
 from pathlib import Path
+import json
 
 class GetMe:
     def __init__(self, bot):
@@ -119,11 +120,11 @@ class ParseMode:
         self.html: str = 'html'
         self.markdown: str = 'markdown'
         self.markdownv2: str = 'markdownv2'
-        self.HTML: str = html
-        self.MARKDOWN: str = markdown
-        self.MARKDOWNV2: str = markdownv2
-        self.MarkDown: str = markdown
-        self.MarkDownV2: str = markdownv2
+        self.HTML: str = self.html
+        self.MARKDOWN: str = self.markdown
+        self.MARKDOWNV2: str = self.markdownv2
+        self.MarkDown: str = self.markdown
+        self.MarkDownV2: str = self.markdownv2
 
     @staticmethod
     def hbold(text: str) -> str:
@@ -153,7 +154,7 @@ class ParseMode:
     def hprecode(lang: str, text: str) -> str:
         return f'<pre><code class="{lang}">' + text + '</code></pre>'
 
-class InputPollOption:
+class PollOption:
     def __init__(self, text: Union[int, float, str], text_parse_mode: Union[str, ParseMode]=None):
         if len(text) > 1_000:
             try:
@@ -170,6 +171,9 @@ class InputFile:
         if isinstance(file, (IOBase, BinaryIO, BytesIO)):
             self.file = file
         elif isinstance(file, Path):
+            with open(file, 'rb') as f:
+                self.file = BytesIO(f.read())
+        elif isinstance(file, str):
             with open(file, 'rb') as f:
                 self.file = BytesIO(f.read())
         else:
@@ -199,6 +203,41 @@ class ChatAction:
     record_video_note = 'record_video_note'
     upload_video_note = 'upload_video_note'
 
+class Poll:
+    def __init__(self, poll: dict):
+        self.id: Optional[int] = poll.get('id', None)
+        self.question: Optional[str] = poll.get('question', None)
+        self.question_entities: Optional[list] = poll.get('question_entities', None)
+        self.options = poll.get('options', None)
+        self.total_voter_count = poll.get('total_voter_count', None)
+        self.is_closed = poll.get('is_closed', None)
+        self.is_anonymous = poll.get('is_anonymous', None)
+        self.type = poll.get('type', None)
+        self.allows_multiple_answers = poll.get('allows_multiple_answers', None)
+        self.correct_option_id = poll.get('correct_option_id', None)
+        self.explanation = poll.get('explanation', None)
+        self.explanation_entities = poll.get('explanation_entities', None)
+        self.open_period = poll.get('open_period', None)
+        self.close_date = poll.get('close_date', None)
+    
+    def __str__(self):
+        return json.dumps({
+            "id": self.id,
+            "question": self.question,
+            "question_entities": self.question_entities,
+            "options": self.options,
+            "total_voter_count": self.total_voter_count,
+            "is_closed": self.is_closed,
+            "is_anonymous": self.is_anonymous,
+            "type": self.type,
+            "allows_multiple_answers": self.allows_multiple_answers,
+            "correct_option_id": self.correct_option_id,
+            "explanation": self.explanation,
+            "explanation_entities": self.explanation_entities,
+            "open_period": self.open_period,
+            "close_date": self.close_date
+        }, ensure_ascii=False)
+
 class Message:
     """
     Message object.
@@ -217,14 +256,14 @@ class Message:
 
     def answer(self, text: str, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: str=None) -> 'Message':
         return self.bot.send_message(self.chat.id, text, reply_markup, parse_mode)
+    
+    def edit(self, text: str, reply_marlup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: str=None) -> bool:
+        return self.bot.edit_message.text(self.chat.id, self.message_id, text, reply_marlup, parse_mode)
 
     def delete(self):
         self.bot.delete_message(self.chat.id, self.message_id)
-        
-    def edit(self, text: Union[int, float, str], parse_mode: [str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
-        return self.bot.edit_message_text(self.chat.id, self.message_id, text, parse_mode, reply_markup)
     
-    def send_poll(self, question: Union[int, float, str], options: List[InputPollOption], question_parse_mode: Union[str, ParseMode]=None, is_anonymous: bool=True, type: str='regular', allows_multiple_answers: bool=False, correct_option_id: int=0, explanation: str=None, explanation_parse_mode: Union[str, ParseMode]=None, open_period: int=None, is_closed: bool=False, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
+    def send_poll(self, question: Union[int, float, str], options: Union[List[PollOption], List[str]], question_parse_mode: Union[str, ParseMode]=None, is_anonymous: bool=True, type: str='regular', allows_multiple_answers: bool=False, correct_option_id: int=0, explanation: str=None, explanation_parse_mode: Union[str, ParseMode]=None, open_period: int=None, is_closed: bool=False, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
         return self.bot.send_poll(self.chat.id, question, options, question_parse_mode, is_anonymous, type, allows_multiple_answers, correct_option_id, explanation, explanation_parse_mode, open_period, is_closed, reply_markup)
     
     def send_audio(self, audio: Union[IOBase, BytesIO, BinaryIO, str], caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
@@ -259,6 +298,18 @@ class Message:
     
     def reply(self, text: str, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: str=None) -> 'Message':
         return self.bot.send_message(self.chat.id, text, reply_markup, parse_mode, reply_to_message_id=self.message_id)
+    
+    def __str__(self):
+        return json.dumps({
+            'message_id': self.message_id,
+            'from_user': str(self.from_user),
+            'chat': str(self.chat),
+            'date': self.date,
+            'text': self.text,
+            'reply_to_message': str(self.reply_to_message),
+            'is_bot': self.is_bot,
+            'other': self._other
+        }, ensure_ascii=False)
 
 class CallbackQuery:
     def __init__(self, callback_query: dict, bot):
@@ -277,6 +328,16 @@ class CallbackQuery:
 
     def answer(self, text: Union[str, int, float], show_alert: bool=False):
         self.bot.answer_callback_query(self.id, str(text), show_alert)
+        
+    def __str__(self):
+        return json.dumps({
+            'id': self.id,
+            'message': str(self.message) if self.message else None,
+            'from_user': str(self.from_user) if self.from_user else None,
+            'chat': str(self.chat) if self.chat else None,
+            'data': self.data,
+            'other': self._other
+        }, ensure_ascii=False)
 
 class User:
     """
@@ -288,6 +349,15 @@ class User:
         self.first_name: Optional[str] = user.get('first_name', None)
         self.username: Optional[str] = user.get('username', None)
         self.last_name: Optional[str] = user.get('last_name', None)
+        
+    def __str__(self):
+        return json.dumps({
+            'id': self.id,
+            'is_bot': self.is_bot,
+            'first_name': self.first_name,
+            'username': self.username,
+            'last_name': self.last_name
+        }, ensure_ascii=False)
 
 class Chat:
     """
@@ -299,6 +369,15 @@ class Chat:
         self.title: Optional[str] = self.first_name
         self.username: Optional[str] = chat.get('username', None)
         self.type: Optional[str] = chat.get('type', None)
+        
+    def __str__(self):
+        return json.dumps({
+            'id': self.id,
+            'first_name': self.first_name,
+            'title': self.title,
+            'username': self.username,
+            'type': self.type
+        }, ensure_ascii=False)
 
 class ChatType:
     def __init__(self):
@@ -306,6 +385,14 @@ class ChatType:
         self.group = 'group'
         self.supergroup = 'supergroup'
         self.channel = 'channel'
+        
+    def __str__(self):
+        return json.dumps({
+            'private': self.private,
+            'group': self.group,
+            'supergroup': self.supergroup,
+            'channel': self.channel
+        })
 
 class ContentType:
     def __init__(self):

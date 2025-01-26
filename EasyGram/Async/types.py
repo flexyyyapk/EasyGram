@@ -17,7 +17,8 @@ from ..types import (
     CallbackQuery as BaseCQ,
     ChatType as BaseChT,
     ParseMode as BasePM,
-    ContentType as BaseCnT
+    ContentType as BaseCnT,
+    Poll as BasePoll
 )
 
 from ..exception import ButtonParameterErorr, Telegram
@@ -62,11 +63,11 @@ class ReplyKeyboardMarkup(BaseRKM):
                 _butt.append({'text': butt})
 
             if len(_butt) == self.row_width:
-                self.keyboards.append(_butt)
+                self.rows.append(_butt)
                 _butt = []
         else:
             if _butt:
-                self.keyboards.append(_butt)
+                self.rows.append(_butt)
 
 class InlineKeyboardButton(BaseIKB):
     def __init__(self, text: str, url: str=None, callback_data: str=None, onClick: Callable=None):
@@ -117,7 +118,7 @@ class ParseMode(BasePM):
     def __init__(self):
         super().__init__()
 
-class InputPollOption:
+class PollOption:
     def __init__(self, text: Union[int, float, str], text_parse_mode: Union[str, ParseMode]=None):
         if len(text) > 1_000:
             try:
@@ -163,6 +164,10 @@ class ChatAction:
     record_video_note = 'record_video_note'
     upload_video_note = 'upload_video_note'
 
+class Poll(BasePoll):
+    def __init__(self, poll: dict):
+        super().__init__(poll)
+
 class Message(BaseMessage):
     """
     Async Message object.
@@ -176,43 +181,43 @@ class Message(BaseMessage):
         return await self.bot.send_message(self.chat.id, text, reply_markup, parse_mode)
     
     @override
-    async def delete(self):
-        await self.bot.delete_message(self.chat.id, self.message_id)
-        
-    @override
-    async def edit(self, text: Union[int, float, str], parse_mode: [str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
-        return await self.bot.edit_message_text(self.chat.id, self.message_id, text, parse_mode, reply_markup)
+    async def edit(self, text: str, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: str=None) -> bool:
+        return await self.bot.edit_message_text(self.chat.id, self.message_id, text, reply_markup=reply_markup, parse_mode=parse_mode)
     
     @override
-    async def send_poll(self, question: Union[int, float, str], options: List[InputPollOption], question_parse_mode: Union[str, ParseMode]=None, is_anonymous: bool=True, type: str='regular', allows_multiple_answers: bool=False, correct_option_id: int=0, explanation: str=None, explanation_parse_mode: Union[str, ParseMode]=None, open_period: int=None, is_closed: bool=False, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
+    async def delete(self):
+        await self.bot.delete_message(self.chat.id, self.message_id)
+    
+    @override
+    async def send_poll(self, question: Union[int, float, str], options: Union[List[PollOption], List[str]], question_parse_mode: Union[str, ParseMode]=None, is_anonymous: bool=True, type: str='regular', allows_multiple_answers: bool=False, correct_option_id: int=0, explanation: str=None, explanation_parse_mode: Union[str, ParseMode]=None, open_period: int=None, is_closed: bool=False, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
         return await self.bot.send_poll(self.chat.id, question, options, question_parse_mode, is_anonymous, type, allows_multiple_answers, correct_option_id, explanation, explanation_parse_mode, open_period, is_closed, reply_markup)
 
     @override
-    async def send_audio(self, audio: Union[IOBase, BytesIO, BinaryIO, str], caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
+    async def send_audio(self, audio: InputFile, caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> 'Message':
         return await self.bot.send_audio(self.chat.id, audio, caption, parse_mode, reply_markup)
     
     @override
-    async def send_document(self, document: Union[InputFile], caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
+    async def send_document(self, document: InputFile, caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
         return await self.bot.send_document(self.chat.id, document, caption, parse_mode, reply_markup)
     
     @override
-    async def send_animation(self, animation: Union[InputFile], caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
+    async def send_animation(self, animation: InputFile, caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
         return await self.bot.send_animation(self.chat.id, animation, caption, parse_mode, reply_markup)
     
     @override
-    async def send_voice(self, voice: Union[InputFile], caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
+    async def send_voice(self, voice: InputFile, caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
         return await self.bot.send_voice(self.chat.id, voice, caption, parse_mode, reply_markup)
     
     @override
-    async def send_video(self, video: Union[InputFile], caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
+    async def send_video(self, video: InputFile, caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
         return await self.bot.send_video(self.chat.id, video, caption, parse_mode, reply_markup)
     
     @override
-    async def send_video_note(self, video_note: Union[InputFile], caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
+    async def send_video_note(self, video_note: InputFile, caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
         return await self.bot.send_video_note(self.chat.id, video_note, caption, parse_mode, reply_markup)
     
     @override
-    async def send_paid_media(self, paid_media: Union[InputFile], caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
+    async def send_paid_media(self, paid_media: InputFile, caption: str = None, parse_mode: Union[str, ParseMode] = None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup] = None) -> 'Message':
         return await self.bot.send_paid_media(self.chat.id, paid_media, caption, parse_mode, reply_markup)
     
     @override
@@ -229,7 +234,7 @@ class Message(BaseMessage):
     
     @override
     async def reply(self, text: str, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: str=None) -> 'Message':
-        return await self.bot.send_message(text, reply_markup, parse_mode, reply_to_message_id=self.message_id)
+        return await self.bot.send_message(self.chat.id, text, reply_markup, parse_mode, reply_to_message_id=self.message_id)
 
 class CallbackQuery(BaseCQ):
     """

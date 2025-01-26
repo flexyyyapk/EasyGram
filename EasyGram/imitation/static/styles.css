@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Comic Neue:wght@400;700&display=swap');
 
 .container {
 	display: flex;
@@ -38,14 +39,14 @@
 }
 
 #inputText {
-	position: absolute;
-	width: 890px;
+	width: 840px;
 	height: 35px;
 	resize: none;
 	top: calc(100% - 71px);
-	margin-left: 124px;
+	margin-left: -1px;
 	outline: none;
 	font-family: 'Roboto', sans-serif;
+	margin-top: 3px;
 }
 
 #sendMessage {
@@ -135,13 +136,56 @@
 	border-bottom-left-radius: 15px;
 }
 
+.images {
+	width: 60px;
+	height: 39px;
+	background: white;
+	margin-top: 3px;
+	border: 1px solid;
+	border-right: none;
+	border-left: none;
+	z-index: 1;
+}
+
+#selectImage {
+	width: 35px;
+	height: 35px;
+	border: none;
+	padding: 0; /* Убираем внутренние отступы */
+	margin: 0; /* Убираем внешние отступы, если нужно */
+	background-color: white;
+	background-image: url('../static/selectImage.png');
+	background-size: cover;
+	background-position: center;
+	background-repeat: no-repeat; /* Убедимся, что фон не повторяется */
+	box-shadow: none; /* Убираем тень, если есть */
+	cursor: pointer; /* Добавляем указатель для лучшего UX */
+}
+
+#selectImage:active {
+	background-color: rgb(200, 200, 200);
+}
+
+
 #showCommands {
 	width: 80px;
 	height: 25px;
-	border-radius: 10px;
-	background: red;
+	border-radius: 3px;
+	border: none;
+	background: #ec1d1d;
 	margin-top: 5px;
 	margin-left: 5px;
+	font-weight: bold;
+	color: white;
+	font-family: 'Comic Neue', sans-serif;
+}
+
+#showCommands:hover {
+	background-color: #db1d1d;
+}
+
+#showCommands:active {
+	background-color: #de3232;
 }
 
 #textMenu {
@@ -181,33 +225,40 @@
 }
 
 #youRbot {
+	display: flex;
+	flex-direction: row;
 	width: 100%;
 	height: 86px;
 	border: 1px solid;
 	border-right: none;
 	border-left: none;
 	background: white;
+	gap: 5px;
 }
 
 #photo {
-    margin-top: 5%;
+	position: absolute;
+	margin-top: 10px;
     width: 60px;
     height: 60px;
     border: 1px solid;
     border-radius: 50%;
+    overflow: hidden;
     background: 
         url('bot_icon.png') center no-repeat,
         linear-gradient(135deg, #6cb2f7, #b3dafe);
-    background-size: 50% auto, cover;
+    background-size: cover;
+    background-position: center;
 }
 
 .infoBot {
-	position: absolute;
-	width: 200px;
+	margin-left: 65px;
+	margin-top: 10px;
+	width: 100%;
+	border-color: black;
 	height: 70px;
 	background: white;
-	top: 15px;
-	margin-left: 75px;
+	top: 0px;
 }
 
 #name {
@@ -232,8 +283,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
     -webkit-box-orient: vertical;
     word-wrap: break-word;
     line-height: 1.2;
+}
+
+#quote {
+	width: 85%;
+	height: auto;
+	border-radius: 3px;
+	background-color: rgba(125, 125, 125, 0.6);
 }
