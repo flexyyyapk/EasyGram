@@ -1,3 +1,7 @@
+"""
+Асинхронная версия
+"""
+
 import aiohttp
 import requests
 from typing import Union, Callable, Optional, BinaryIO, List, Tuple
@@ -40,7 +44,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import json
 
-from ..state import StatesGroup, StateRegExp
+from ..state import StatesGroup, State
+
+import logging
 
 __all__ = [
     'ParseMode',
@@ -66,6 +72,9 @@ __all__ = [
 ]
 
 class AsyncBot:
+    """
+    Класс для управления ботом асинхронно.
+    """
     offset = 0
     _message_handlers = []
     _callback_query_handlers = []
@@ -73,13 +82,42 @@ class AsyncBot:
     _poll_handlers = []
     _query_next_step_handlers = []
 
-    def __init__(self, token: str):
+    __session__: aiohttp.ClientSession = aiohttp.ClientSession(connector=aiohttp.TCPConnector(keepalive_timeout=30))
+
+    def __init__(self, token: str, log_level: int=logging.INFO):
+        """
+        Инициализирует AsyncBot с заданным токеном.
+
+        Args:
+            token (str): Токен для аутентификации запросов к API Telegram.
+            log_level (int): Уровень логирования.
+        """
         self.token = token
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(log_level)
+
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        self.logger.addHandler(console_handler)
+
+        try:
+            response = requests.get(f'https://api.telegram.org/bot{self.token}/getMe').json()
+        except (TimeoutError, aiohttp.ClientError, ConnectionError) as e:
+            raise ConnectionError('Connection error')
+        except Exception as e:
+            raise Telegram('The token is incorrectly set.')
+
+        self.logger.debug(f'The bot is launched with user name @{response["result"]["username"]}')
 
     async def get_me(self) -> User:
         """
-        Информация о боте.
-        :return: GetMe object
+        Получает информацию о боте из Telegram.
+
+        Returns:
+            User: Объект, представляющий бота.
         """
         response = requests.get(f'https://api.telegram.org/bot{self.token}/getMe')
 
@@ -87,11 +125,15 @@ class AsyncBot:
 
     def set_my_commands(self, commands: List[BotCommand], scope: Union[BotCommandScopeChat, BotCommandScopeDefault, BotCommandScopeChatMember, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChatAdministrators, BotCommandScopeAllChatAdministrators]=None, language_code: str=None) -> bool:
         """
-        Установка команд в меню команд.
-        :param commands: команды
-        :param scope: в каком окружении установится команды
-        :param language_code: языковой код
-        :return: True or False
+        Устанавливает команды для бота.
+
+        Args:
+            commands (List[BotCommand]): Список команд для установки.
+            scope (Union[BotCommandScopeChat, BotCommandScopeDefault, etc.], optional): Область видимости команд.
+            language_code (str, optional): Код языка для локализации команд.
+
+        Returns:
+            bool: Возвращает True, если команды успешно установлены.
         """
         parameters = {
             'commands': [{"command": cmd.command, "description": cmd.description} for cmd in commands]
@@ -113,13 +155,17 @@ class AsyncBot:
 
     async def send_message(self, chat_id: Union[int, str], text: Union[int, float, str], reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: str=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка сообщений.
-        :param chat_id: айди чата
-        :param text: текст
-        :param reply_markup: кнопки ReplyKeyboardMarkup или InlineKeyboardMarkup
-        :param parse_mode: форматирования текста
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет текстовое сообщение пользователю или в чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            text (Union[int, float, str]): Текст сообщения.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура для сообщения.
+            parse_mode (str, optional): Режим форматирования текста.
+            reply_to_message_id (int, optional): Если указан, сообщение будет отправлено как ответ на указанное сообщение.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             'chat_id': chat_id,
@@ -138,27 +184,35 @@ class AsyncBot:
         if reply_to_message_id is not None:
             parameters['reply_to_message_id'] = reply_to_message_id
 
-        async with aiohttp.ClientSession() as session:
-            response = await session.post(f"https://api.telegram.org/bot{self.token}/sendMessage", json=parameters)
-
-            try:
+        try:
+            async with self.__session__.post(f"https://api.telegram.org/bot{self.token}/sendMessage", json=parameters) as response:
                 _msg = Message((await response.json())['result'], self)
-            except KeyError:
-                _description = await response.json()
-                raise Telegram(_description['description'])
+        except KeyError:
+            _description = await response.json()
+            raise Telegram(_description['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен.')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
     async def send_photo(self, chat_id: Union[int, str], photo: Union[InputFile], caption: Union[int, float, str]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: str=None, photo_name: str=None, reply_to_message_id: int=None):
         """
-        Отправка фото
-        :param chat_id: Айди чата
-        :param photo: Фото
-        :param caption: Описание
-        :param reply_markup: Кнопка
-        :param parse_mode: Тип форматирования
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет фотографию в чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            photo (Union[InputFile]): Файл фотографии.
+            caption (Union[int, float, str], optional): Подпись к фотографии.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура для сообщения.
+            parse_mode (str, optional): Режим форматирования текста подписи.
+            photo_name (str, optional): Имя файла фотографии.
+            reply_to_message_id (int, optional): Если указан, сообщение будет отправлено как ответ на указанное сообщение.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             'chat_id': chat_id
@@ -193,95 +247,119 @@ class AsyncBot:
         if parse_mode is not None:
             parameters['parse_mode'] = parse_mode
 
-        async with aiohttp.ClientSession() as session:
-            data = aiohttp.FormData()
+        data = aiohttp.FormData()
 
-            for param in parameters:
-                if param == 'reply_markup':
-                    data.add_field(param, json.dumps(parameters[param]))
-                    continue
-                data.add_field(param, str(parameters[param]))
+        for param in parameters:
+            if param == 'reply_markup':
+                data.add_field(param, json.dumps(parameters[param]))
+                continue
+            data.add_field(param, str(parameters[param]))
 
-            data.add_field('photo', photo.file, filename=name, content_type=f'image/{_type}')
+        data.add_field('photo', photo.file, filename=name, content_type=f'image/{_type}')
 
-            response = await session.post(f"https://api.telegram.org/bot{self.token}/sendPhoto", data=data)
-            try:
+        try:
+            async with self.__session__.post(f"https://api.telegram.org/bot{self.token}/sendPhoto", data=data) as response:
                 _msg = Message((await response.json())['result'], self)
-            except KeyError:
-                raise Telegram((await response.json())['description'])
+        except KeyError:
+            raise Telegram((await response.json())['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
-    def message(self, _filters: Callable[[Message], any]=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[List[str], Tuple[str], str]=None, state: StateRegExp=None) -> Callable:
+    def message(self, _filters: Callable[[Message], any]=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[List[str], Tuple[str], str]=None, state: State=None) -> Callable:
         """
         Декоратор для обработки входящих сообщений.
-        :param _filters: лямбда
-        :param content_types: тип сообщения
-        :param commands: команды(без префикса)
-        :param allowed_chat_type: тип группы
-        :param state: объект класса StateRegExp
-        :return: Функцию которую нужно вызвать
+
+        Args:
+            _filters (Callable[[Message], any], optional): Функция фильтрации сообщений.
+            content_types (Union[str, List[str]], optional): Типы контента, которые должен обрабатывать обработчик.
+            commands (Union[str, List[str]], optional): Команды, на которые должен реагировать обработчик.
+            allowed_chat_type (Union[List[str], Tuple[str], str], optional): Типы чатов, в которых активен обработчик.
+            state (StateRegExp, optional): Состояние в контексте машины состояний.
+
+        Returns:
+            Callable: Функция-обертка, которая регистрирует обработчик сообщений.
         """
         def wrapper(func):
             self._message_handlers.append({'func': func, 'filters': _filters, 'content_types': content_types, 'commands': commands, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
 
-    def message_handler(self, _filters: Callable[[Message], any]=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[List[str], Tuple[str], str]=None, state: StateRegExp=None) -> Callable:
+    def message_handler(self, _filters: Callable[[Message], any]=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[List[str], Tuple[str], str]=None, state: State=None) -> Callable:
         """
-        Декоратор для обработки входящих сообщений.Для миграции из aiogram2 в EasyGram
-        :param _filters: лямбда
-        :param content_types: тип сообщения
-        :param commands: команды(без префикса)
-        :param allowed_chat_type: тип группы
-        :param state: объект класса StateRegExp
-        :return: Функцию которую нужно вызвать
+        Декоратор для обработки входящих сообщений, предназначенный для миграции из aiogram2 в EasyGram.
+
+        Args:
+            _filters (Callable[[Message], any], optional): Функция фильтрации сообщений.
+            content_types (Union[str, List[str]], optional): Типы контента, которые должен обрабатывать обработчик.
+            commands (Union[str, List[str]], optional): Команды, на которые должен реагировать обработчик.
+            allowed_chat_type (Union[List[str], Tuple[str], str], optional): Типы чатов, в которых активен обработчик.
+            state (StateRegExp, optional): Состояние в контексте машины состояний.
+
+        Returns:
+            Callable: Функция-обертка, которая регистрирует обработчик сообщений.
         """
         def wrapper(func):
             self._message_handlers.append({'func': func, 'filters': _filters, 'content_types': content_types, 'commands': commands, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
 
-    def callback_query(self, _filters: Callable[[CallbackQuery], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> Callable:
+    def callback_query(self, _filters: Callable[[CallbackQuery], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> Callable:
         """
-        Декоратор для обработки вызовов InlineKeyboardMarkup кнопки.
-        :param _filters: лямбда
-        :param allowed_chat_type: тип группы
-        :return: Функцию которую нужно вызвать
+        Декоратор для обработки callback-запросов от InlineKeyboardMarkup.
+
+        Args:
+            _filters (Callable[[CallbackQuery], any], optional): Функция фильтрации запросов.
+            allowed_chat_type (Union[str, List[str], Tuple[str]], optional): Типы чатов, в которых активен обработчик.
+            state (StateRegExp, optional): Состояние в контексте машины состояний.
+
+        Returns:
+            Callable: Функция-обертка, которая регистрирует обработчик запросов.
         """
         def wrapper(func):
             self._callback_query_handlers.append({'func': func, 'filters': _filters, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
 
-    def callback_query_handler(self, _filters: Callable[[CallbackQuery], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> Callable:
+    def callback_query_handler(self, _filters: Callable[[CallbackQuery], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> Callable:
         """
-        Декоратор для обработки вызовов InlineKeyboardMarkup кнопки.Для миграции из aiogram2 в EasyGram
-        :param _filters: лямбда
-        :param allowed_chat_type: тип группы
-        :return: Функцию которую нужно вызвать
+        Декоратор для обработки callback-запросов от InlineKeyboardMarkup, предназначенный для миграции из aiogram2 в EasyGram.
+
+        Args:
+            _filters (Callable[[CallbackQuery], any], optional): Функция фильтрации запросов.
+            allowed_chat_type (Union[str, List[str], Tuple[str]], optional): Типы чатов, в которых активен обработчик.
+            state (StateRegExp, optional): Состояние в контексте машины состояний.
+
+        Returns:
+            Callable: Функция-обертка, которая регистрирует обработчик запросов.
         """
         def wrapper(func):
             self._callback_query_handlers.append({'func': func, 'filters': _filters, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
     
-    def poll_handler(self, _filters: Callable[[Poll], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> None:
+    def poll_handler(self, _filters: Callable[[Poll], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> None:
         """
-        Декоратор для обработки опросов.Для миграции из pyTelegramBotAPI в EasyGram
-        :param _filters: лямбда
-        :param allowed_chat_type: тип группы
-        :param state: объект класса StateRegExp
-        :return: None
+        Декоратор для обработки опросов, предназначенный для миграции из pyTelegramBotAPI в EasyGram.
+
+        Args:
+            _filters (Callable[[Poll], any], optional): Функция фильтрации опросов.
+            allowed_chat_type (Union[str, List[str], Tuple[str]], optional): Типы чатов, в которых активен обработчик.
+            state (StateRegExp, optional): Состояние в контексте машины состояний.
         """
 
         def wrapper(func):
             self._poll_handlers.append({'func': func, 'filters': _filters, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
     
-    def poll(self, _filters: Callable[[Poll], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> None:
+    def poll(self, _filters: Callable[[Poll], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> None:
         """
-        Декоратор для обработки опросов.Для миграции из pyTelegramBotAPI в EasyGram
-        :param _filters: лямбда
-        :param allowed_chat_type: тип группы
-        :param state: объект класса StateRegExp
-        :return: None
+        Декоратор для обработки опросов, предназначенный для миграции из pyTelegramBotAPI в EasyGram.
+
+        Args:
+            _filters (Callable[[Poll], any], optional): Функция фильтрации опросов.
+            allowed_chat_type (Union[str, List[str], Tuple[str]], optional): Типы чатов, в которых активен обработчик.
+            state (StateRegExp, optional): Состояние в контексте машины состояний.
         """
 
         def wrapper(func):
@@ -290,58 +368,80 @@ class AsyncBot:
 
     async def answer_callback_query(self, chat_id: Union[int, str], text: Union[int, float, str]=None, show_alert: bool=False) -> bool:
         """
-        Отправляет ответ на callback-запрос от пользователя.
-        :param chat_id: Идентификатор чата, может быть целым числом или строкой.
-        :param text: Текст сообщения, который будет показан пользователю в ответ на callback-запрос.
-        :param show_alert: Если True, сообщение будет отображаться в виде всплывающего окна (alert).
-        :return: Возвращает True, если запрос был успешным, иначе False.
+        Отправляет ответ на callback-запрос пользователя.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            text (Union[int, float, str], optional): Текст ответа.
+            show_alert (bool, optional): Если True, ответ будет показан в виде всплывающего уведомления.
+
+        Returns:
+            bool: Возвращает True, если ответ был успешно отправлен.
         """
         parameters = {
             'callback_query_id': chat_id,
             'text': str(text),
             'show_alert': show_alert
         }
-
-        async with aiohttp.ClientSession() as session:
-            response = await session.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json=parameters)
-
-            try:
+        
+        try:
+            async with self.__session__.post(f"https://api.telegram.org/bot{self.token}/answerCallbackQuery", json=parameters) as response:
                 _msg = (await response.json())['result']
-            except KeyError:
-                raise Telegram(await response.json()['description'])
+        except KeyError:
+            raise Telegram((await response.json())['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
     async def delete_message(self, chat_id: Union[int, str], message_id: int) -> bool:
         """
-        Удаляет сообщения.
+        Удаляет сообщение из чата.
         - Сообщение можно удалить, только если оно было отправлено менее 48 часов назад.
         - Сообщение в приватном чате можно удалить, только если оно было отправлено более 24 часов назад.
-        :param chat_id: Айди чата
-        :param message_id: Айди сообщения
-        :return: Булевое значение
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            message_id (int): Идентификатор сообщения для удаления.
+
+        Returns:
+            bool: Возвращает True, если сообщение было успешно удалено.
         """
         parameters = {
             'chat_id': chat_id,
             'message_id': message_id
         }
 
-        async with aiohttp.ClientSession() as session:
-            response = await session.post(f"https://api.telegram.org/bot{self.token}/deleteMessage", json=parameters)
-
-            _msg = (await response.json())['result']
+        try:
+            async with self.__session__.post(f"https://api.telegram.org/bot{self.token}/deleteMessage", json=parameters) as response:
+                _msg = (await response.json())['result']
+        except KeyError:
+            raise Telegram((await response.json())['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
     async def edit_message_text(self, chat_id: Union[int, str], message_id: int, text: Union[int, float, str], parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None) -> bool:
         """
-        Редактирование сообщения.Обратите внимание, что деловые сообщения, которые не были отправлены ботом и не содержат встроенной клавиатуры, можно редактировать только в течение 48 часов с момента отправки.
-        :param chat_id: Айди чата
-        :param message_id: Айди сообщения
-        :param text: Текст
-        :param parse_mode: Форматирования текста
-        :param reply_markup: Кнопки
-        :return: Булевое значение
+        Редактирует текст существующего сообщения.
+        - Обратите внимание, что деловые сообщения, которые не были отправлены ботом и не содержат встроенной клавиатуры, можно редактировать только в течение 48 часов с момента отправки.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            message_id (int): Идентификатор редактируемого сообщения.
+            text (Union[int, float, str]): Новый текст сообщения.
+            parse_mode (Union[str, ParseMode], optional): Режим форматирования текста.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура для сообщения.
+
+        Returns:
+            bool: Возвращает True, если сообщение было успешно отредактировано.
         """
 
         parameters = {
@@ -358,30 +458,41 @@ class AsyncBot:
             elif isinstance(reply_markup, InlineKeyboardMarkup):
                 parameters['reply_markup'] = {'inline_keyboard': reply_markup.rows}
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"https://api.telegram.org/bot{self.token}/editMessageText", json=parameters) as response:
+        try:
+            async with self.__session__.post(f"https://api.telegram.org/bot{self.token}/editMessageText", json=parameters) as response:
                 _msg = (await response.json())['result']
+        except KeyError:
+            raise Telegram((await response.json())['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
     async def send_poll(self, chat_id: Union[int, str], question: Union[int, float, str], options: Union[List[PollOption], List[str]], question_parse_mode: Union[str, ParseMode]=None, is_anonymous: bool=True, type: str='regular', allows_multiple_answers: bool=False, correct_option_id: int=0, explanation: str=None, explanation_parse_mode: Union[str, ParseMode]=None, open_period: int=None, is_closed: bool=False, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка опроса
-        :param chat_id: Айди чата
-        :param question: Вопрос
-        :param options: Варианты
-        :param question_parse_mode: Тип форматирования в вопросе
-        :param is_anonymous: Анонимный опрос
-        :param type: Тип опроса
-        :param allows_multiple_answers: Выбор несколько вариантов
-        :param correct_option_id: Правильный вариант(в индексах)
-        :param explanation: Объяснение
-        :param explanation_parse_mode: Тип форматирования в объяснениях
-        :param open_period: Сколько будет доступен выбор вариантов
-        :param is_closed: Закрыт
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет опрос в указанный чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата, в который отправляется опрос.
+            question (Union[int, float, str]): Текст вопроса опроса.
+            options (Union[List[PollOption], List[str]]): Список вариантов ответов.
+            question_parse_mode (Union[str, ParseMode], optional): Режим форматирования текста вопроса.
+            is_anonymous (bool, optional): Указывает, является ли опрос анонимным.
+            type (str, optional): Тип опроса ('regular' или 'quiz').
+            allows_multiple_answers (bool, optional): Разрешить ли выбор нескольких вариантов ответов.
+            correct_option_id (int, optional): Индекс правильного ответа, если опрос является викториной.
+            explanation (str, optional): Объяснение, которое следует после опроса.
+            explanation_parse_mode (Union[str, ParseMode], optional): Режим форматирования текста объяснения.
+            open_period (int, optional): Время в секундах, в течение которого опрос будет активен.
+            is_closed (bool, optional): Закрыть ли опрос сразу после создания.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура, которая будет отображаться с сообщением.
+            reply_to_message_id (int, optional): Идентификатор сообщения, на которое должен ответить опрос.
+
+        Returns:
+            Message: Объект сообщения, содержащий опрос.
         """
         parameters = {
             "chat_id": chat_id,
@@ -429,25 +540,35 @@ class AsyncBot:
 
         if open_period is not None:
             parameters['open_period'] = open_period
-
-        async with aiohttp.ClientSession() as session:
-            response = await session.post(f"https://api.telegram.org/bot{self.token}/sendPoll", json=parameters)
-
-            _msg = Message((await response.json())['result'], self)
+        
+        try:
+            async with self.__session__.post(f"https://api.telegram.org/bot{self.token}/sendPoll", json=parameters) as response:
+                _msg = Message((await response.json())['result'], self)
+        except KeyError:
+            raise Telegram((await response.json())['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
     async def send_audio(self, chat_id: Union[int, str], audio: Union[InputFile], title: str=None, caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка аудио
-        :param chat_id: Айди чата
-        :param audio: Аудио
-        :param title: Имя файла
-        :param caption: Описание
-        :param parse_mode: Тип форматирования
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет аудиофайл в указанный чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата, в который отправляется аудио.
+            audio (Union[InputFile]): Аудиофайл для отправки.
+            title (str, optional): Название аудиофайла.
+            caption (str, optional): Подпись к аудиофайлу.
+            parse_mode (Union[str, ParseMode], optional): Режим форматирования текста подписи.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура для сообщения.
+            reply_to_message_id (int, optional): Идентификатор сообщения, на которое должен быть дан ответ.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id
@@ -472,33 +593,41 @@ class AsyncBot:
         if parse_mode is not None:
             parameters['parse_mode'] = parse_mode
 
-        async with aiohttp.ClientSession() as session:
-            data = aiohttp.FormData()
+        data = aiohttp.FormData()
 
-            for param in parameters:
-                if param == 'reply_markup':
-                    data.add_field(param, json.loads(parameters[param]))
-                    continue
-                data.add_field(param, str(parameters[param]))
+        for param in parameters:
+            if param == 'reply_markup':
+                data.add_field(param, json.loads(parameters[param]))
+                continue
+            data.add_field(param, str(parameters[param]))
 
-            async with session.post(f'https://api.telegram.org/bot{self.token}/sendAudio', data=data) as response:
-                try:
-                    _msg = Message((await response.json())['result'], self)
-                except KeyError:
-                    raise Telegram((await response.json())['description'])
+        try:
+            async with self.__session__.post(f'https://api.telegram.org/bot{self.token}/sendAudio', data=data) as response:
+                _msg = Message((await response.json())['result'], self)
+        except KeyError:
+            raise Telegram((await response.json())['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
     async def send_document(self, chat_id: Union[int, str], document: Union[InputFile], caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка документа
-        :param chat_id: Айди чата
-        :param document: Документ
-        :param caption: Описание
-        :param parse_mode: Тип форматирования
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет документ в указанный чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата, в который отправляется документ.
+            document (Union[InputFile]): Файл документа для отправки.
+            caption (str, optional): Подпись к документу.
+            parse_mode (Union[str, ParseMode], optional): Режим форматирования текста подписи.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура, прикрепляемая к сообщению.
+            reply_to_message_id (int, optional): Идентификатор сообщения, на которое должен быть дан ответ.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id
@@ -520,33 +649,41 @@ class AsyncBot:
         if parse_mode is not None:
             parameters['parse_mode'] = parse_mode
 
-        async with aiohttp.ClientSession() as session:
-            data = aiohttp.FormData()
+        data = aiohttp.FormData()
 
-            for param in parameters:
-                if param == 'reply_markup':
-                    data.add_field(param, json.loads(parameters[param]))
-                    continue
-                data.add_field(param, str(parameters[param]))
-
-            async with session.post(f'https://api.telegram.org/bot{self.token}/sendDocument', data=data) as response:
-                try:
-                    _msg = Message((await response.json())['result'], self)
-                except KeyError:
-                    raise Telegram((await response.json())['description'])
+        for param in parameters:
+            if param == 'reply_markup':
+                data.add_field(param, json.loads(parameters[param]))
+                continue
+            data.add_field(param, str(parameters[param]))
+        
+        try:
+            async with self.__session__.post(f'https://api.telegram.org/bot{self.token}/sendDocument', data=data) as response:
+                _msg = Message((await response.json())['result'], self)
+        except KeyError:
+            raise Telegram((await response.json())['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
     async def send_animation(self, chat_id: Union[int, str], animation: Union[InputFile], caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка видео/гифки
-        :param chat_id: Айди чата
-        :param animation: Гифка/Видео
-        :param caption: Описание
-        :param parse_mode: Тип форматирования
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет анимацию (видео или GIF) в указанный чат.
+        
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата, в который отправляется анимация.
+            animation (Union[InputFile]): Файл анимации для отправки.
+            caption (str, optional): Подпись к анимации.
+            parse_mode (Union[str, ParseMode], optional): Режим форматирования текста подписи.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура, прикрепляемая к сообщению.
+            reply_to_message_id (int, optional): Идентификатор сообщения, на которое должен быть дан ответ.
+        
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id
@@ -568,33 +705,41 @@ class AsyncBot:
         if parse_mode is not None:
             parameters['parse_mode'] = parse_mode
 
-        async with aiohttp.ClientSession() as session:
-            data = aiohttp.FormData()
+        data = aiohttp.FormData()
 
-            for param in parameters:
-                if param == 'reply_markup':
-                    data.add_field(param, json.loads(parameters[param]))
-                    continue
-                data.add_field(param, str(parameters[param]))
-
-            async with session.post(f'https://api.telegram.org/bot{self.token}/sendDocument', data=data) as response:
-                try:
-                    _msg = Message((await response.json())['result'], self)
-                except KeyError:
-                    raise Telegram((await response.json())['description'])
+        for param in parameters:
+            if param == 'reply_markup':
+                data.add_field(param, json.loads(parameters[param]))
+                continue
+            data.add_field(param, str(parameters[param]))
+        
+        try:
+            async with self.__session__.post(f'https://api.telegram.org/bot{self.token}/sendDocument', data=data) as response:
+                _msg = Message((await response.json())['result'], self)
+        except KeyError:
+            raise Telegram((await response.json())['description'])
+        except AttributeError:
+            raise ValueError('Бот не запущен')
+        except Exception:
+            traceback.print_exc()
+            raise Telegram()
 
         return _msg
 
     async def send_voice(self, chat_id: Union[int, str], voice: Union[InputFile], caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка голосового сообщения
-        :param chat_id: Айди чата
-        :param voice: Голосовое сообщение
-        :param caption: Описание
-        :param parse_mode: Тип форматирования
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет голосовое сообщение в указанный чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата, в который отправляется сообщение.
+            voice (Union[InputFile]): Файл голосового сообщения для отправки.
+            caption (str, optional): Подпись к голосовому сообщению.
+            parse_mode (Union[str, ParseMode], optional): Режим форматирования текста подписи.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура, прикрепляемая к сообщению.
+            reply_to_message_id (int, optional): Идентификатор сообщения, на которое должен быть дан ответ.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id
@@ -635,14 +780,18 @@ class AsyncBot:
 
     async def send_video_note(self, chat_id: Union[int, str], video_note: Union[InputFile], caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка кружка
-        :param chat_id: Айди чата
-        :param video_note: Кружок
-        :param caption: Описание
-        :param parse_mode: Тип форматирование
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет видеозаметку в указанный чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата, в который отправляется видеозаметка.
+            video_note (Union[InputFile]): Файл видеозаметки для отправки.
+            caption (str, optional): Подпись к видеозаметке.
+            parse_mode (Union[str, ParseMode], optional): Режим форматирования текста подписи.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура, прикрепляемая к сообщению.
+            reply_to_message_id (int, optional): Идентификатор сообщения, на которое должен быть дан ответ.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id
@@ -683,14 +832,18 @@ class AsyncBot:
 
     async def send_video(self, chat_id: Union[int, str], video: Union[InputFile], caption: str=None, parse_mode: Union[str, ParseMode]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка видео
-        :param chat_id: Айди чата
-        :param video: Видео
-        :param caption: Описание
-        :param parse_mode: Тип форматирования
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет видео в указанный чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата, в который отправляется видео.
+            video (Union[InputFile]): Файл видео для отправки.
+            caption (str, optional): Подпись к видео.
+            parse_mode (Union[str, ParseMode], optional): Режим форматирования текста подписи.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура, прикрепляемая к сообщению.
+            reply_to_message_id (int, optional): Идентификатор сообщения, на которое должен быть дан ответ.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id
@@ -731,14 +884,18 @@ class AsyncBot:
 
     async def send_contact(self, chat_id: Union[int, str], number: Union[InputFile], first_name: str, last_name: str=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка контактов
-        :param chat_id: Айди чата
-        :param number: Номер
-        :param first_name: Имя контакта
-        :param last_name: Фамилия контакта
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет контакт в указанный чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата, в который отправляется контакт.
+            number (Union[InputFile]): Номер телефона контакта.
+            first_name (str): Имя контакта.
+            last_name (str, optional): Фамилия контакта.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура, прикрепляемая к сообщению.
+            reply_to_message_id (int, optional): Идентификатор сообщения, на которое должен быть дан ответ.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id,
@@ -769,12 +926,16 @@ class AsyncBot:
 
     async def send_dice(self, chat_id: Union[int, str], emoji: str, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка анимирующих эмодзи
-        :param chat_id: Айди чата
-        :param emoji: Эмодзи: 🎲, 🎯, 🏀, ⚽, 🎳, 🎰
-        :param reply_markup: Кнопка
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет анимированный эмодзи в чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            emoji (str): Эмодзи для отправки (допустимые значения: 🎲, 🎯, 🏀, ⚽, 🎳, 🎰).
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура для сообщения.
+            reply_to_message_id (int, optional): ID сообщения, на которое должен быть дан ответ.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id
@@ -784,7 +945,7 @@ class AsyncBot:
             parameters['reply_to_message_id'] = reply_to_message_id
 
         if emoji not in ['🎲', '🎯', '🏀', '⚽', '🎳', '🎰']:
-            raise TypeError(f'Такой эмодзи {emoji} не допускается.')
+            raise TypeError(f'Эмодзи {emoji} не поддерживается.')
 
         if reply_markup is not None and reply_markup.rows:
             if isinstance(reply_markup, ReplyKeyboardMarkup):
@@ -803,10 +964,14 @@ class AsyncBot:
 
     async def send_chat_action(self, chat_id: Union[int, str], action: Union[str, ChatAction]) -> None:
         """
-        Установка статуса на определённое время
-        :param chat_id: Айди чата
-        :param action: Действие.Смотреть тип дествий в EasyGram.types.ChatAction/EasyGram.Async.types.ChatAction
-        :return: None
+        Отправляет статус действия в чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            action (Union[str, ChatAction]): Тип действия (см. EasyGram.types.ChatAction/EasyGram.Async.types.ChatAction).
+
+        Returns:
+            None
         """
         parameters = {
             "chat_id": chat_id,
@@ -822,33 +987,44 @@ class AsyncBot:
     
     async def next_step_handler(self, chat_id: int, callback: Callable, *args):
         """
-        Ставит 'триггер'.Как только определённый пользователь отправит сообщение вызывается функция.
-        :param chat_id: Айди чата.
-        :param callback: Функция.
-        :param args: Параметры к функции.
-        :return: None
+        Устанавливает обработчик следующего шага для сообщений от пользователя.
+
+        Args:
+            chat_id (int): Идентификатор чата.
+            callback (Callable): Функция обратного вызова, которая будет вызвана при получении сообщения.
+            args: Аргументы, передаваемые в функцию обратного вызова.
+
+        Returns:
+            None
         """
         self._next_step_handlers.append((str(chat_id), callback, args))
     
     async def query_next_step_handler(self, chat_id: int, callback: Callable, *args):
         """
-        Ставит 'триггер'.Как только определённый пользователь нажмёт на Inline кнопку вызывается функция.
-        :param chat_id: Айди чата.
-        :param callback: Функция.
-        :param args: Параметры к функции.
-        :return: None
+        Устанавливает обработчик следующего шага для inline-запросов от пользователя.
+
+        Args:
+            chat_id (int): Идентификатор чата.
+            callback (Callable): Функция обратного вызова, которая будет вызвана при нажатии на inline-кнопку.
+            args: Аргументы, передаваемые в функцию обратного вызова.
+
+        Returns:
+            None
         """
         self._query_next_step_handlers.append((str(chat_id), callback, args))
 
     async def polling(self, on_startup: Callable=None, threaded_run: bool=False, thread_max_works: int=10, *args) -> None:
         """
-        Запускает процесс опроса событий, выполняя указанную функцию при старте.
+        Запускает процесс опроса сервера Telegram для получения обновлений.
 
-        :param on_startup: Функция, которая будет вызвана при запуске опроса (например, для инициализации).
-        :param args: Дополнительные аргументы, которые будут переданы в функцию on_startup.
-        :param threaded_run: Запуск с потоком.
-        :param thread_max_works: Ограничения по потокам(!Чем больше потоков запустится, тем сильнее нагружается процессор!)
-        :return: Ничего не возвращает.
+        Args:
+            on_startup (Callable, optional): Функция, вызываемая при запуске опроса.
+            threaded_run (bool, optional): Если True, опрос выполняется в отдельных потоках.
+            thread_max_works (int, optional): Максимальное количество потоков.
+            args: Дополнительные аргументы, передаваемые в функцию on_startup.
+
+        Returns:
+            None
         """
 
         if on_startup is not None:  asyncio.run(on_startup(args))
@@ -856,109 +1032,120 @@ class AsyncBot:
         if threaded_run:
             executor = ThreadPoolExecutor(thread_max_works)
 
-        while True:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f'https://api.telegram.org/bot{self.token}/getUpdates', params={"offset": self.offset}) as response:
-                    updates = response
-
-                    if updates.status != 200:
-                        continue
-
-                    updates = (await updates.json())["result"]
-
-            for update in updates:
-
-                try:
-                    self.offset = update["update_id"] + 1
-
-                    if update.get('message', False):
+        try:
+                while True:
+                    async with self.__session__.get(f'https://api.telegram.org/bot{self.token}/getUpdates', params={"offset": self.offset, "timeout": 30, "allowed_updates": ["message", "callback_query", "poll"]}, timeout=35) as response:
+                        if response.status != 200:
+                            continue
                         
-                        for indx, step in enumerate(self._next_step_handlers):
-                            if str(update['message']['chat']['id']) == step[0]:
-                                if threaded_run:
-                                    executor.submit(self._coroutine_run_with_thread, step[1], Message(update['message'], self), *step[2])
-                                else:
-                                    await step[1](Message(update['message'], self), *step[2])
-                                
-                                self._next_step_handlers.pop(indx)
-                                break
-                        
-                        for handler_message in self._message_handlers:
-                            if handler_message['filters'] is not None and not handler_message['filters'](Message(update['message'], self)):
-                                continue
+                        updates = response
 
-                            if handler_message['commands'] is not None:
-                                if isinstance(handler_message['commands'], list):
-                                    if not any(update['message']['text'].split()[0] == '/'+command for command in handler_message['commands']):
-                                        continue
-                                elif isinstance(handler_message['commands'], str):
-                                    if not update['message']['text'].split()[0] == '/'+handler_message['commands']:
-                                        continue
+                        updates = (await updates.json())["result"]
 
-                            if isinstance(handler_message['content_types'], str):
-                                if not update['message'].get(handler_message['content_types'], False) or handler_message['content_types'] == 'any':
-                                    continue
-                            elif isinstance(handler_message['content_types'], list):
-                                if not any(update['message'].get(__type, False) for __type in handler_message['content_types']) or handler_message['content_types'] == 'any':
+                    for update in updates:
+                        self.offset = update["update_id"] + 1
+
+                        if update.get('message', False):
+                            
+                            for indx, step in enumerate(self._next_step_handlers):
+                                if str(update['message']['chat']['id']) == step[0]:
+                                    if threaded_run:
+                                        executor.submit(self._coroutine_run_with_thread, step[1], Message(update['message'], self), *step[2])
+                                    else:
+                                        await step[1](Message(update['message'], self), *step[2])
+                                    
+                                    self._next_step_handlers.pop(indx)
+                                    break
+                            
+                            for handler_message in self._message_handlers:
+                                if handler_message['filters'] is not None and not handler_message['filters'](Message(update['message'], self)):
                                     continue
 
-                            if isinstance(handler_message['allowed_chat_type'], str):
-                                if update['message']['chat']['type'] != handler_message['allowed_chat_type']:
-                                    continue
-                            elif isinstance(handler_message['allowed_chat_type'], (tuple, list)):
-                                if not any(update['message']['chat']['type'] == _chat_type for _chat_type in handler_message['allowed_chat_type']):
-                                    continue
-
-                            if handler_message['state'] is not None:
-                                if not StatesGroup.variables[handler_message['state'].state_name].get_state(update['message']['chat']['id'], update['message']['from']['id']):
-                                    try:
-                                        if (handler_message['state'].reg_exp is not None and re.search(handler_message['state'].reg_exp, str(StatesGroup.variables[handler_message['state'].state_name].get_state(update['message']['chat']['id'], update['message']['from']['id'])) is None)):
+                                if handler_message['commands'] is not None:
+                                    if isinstance(handler_message['commands'], list):
+                                        if not any(update['message']['text'].split()[0] == '/'+command for command in handler_message['commands']):
                                             continue
-                                    except TypeError:
+                                    elif isinstance(handler_message['commands'], str):
+                                        if not update['message']['text'].split()[0] == '/'+handler_message['commands']:
+                                            continue
+
+                                if isinstance(handler_message['content_types'], str):
+                                    if not update['message'].get(handler_message['content_types'], False) or handler_message['content_types'] == 'any':
+                                        continue
+                                elif isinstance(handler_message['content_types'], list):
+                                    if not any(update['message'].get(__type, False) for __type in handler_message['content_types']) or handler_message['content_types'] == 'any':
                                         continue
 
-                            message = Message(update['message'], self)
+                                if isinstance(handler_message['allowed_chat_type'], str):
+                                    if update['message']['chat']['type'] != handler_message['allowed_chat_type']:
+                                        continue
+                                elif isinstance(handler_message['allowed_chat_type'], (tuple, list)):
+                                    if not any(update['message']['chat']['type'] == _chat_type for _chat_type in handler_message['allowed_chat_type']):
+                                        continue
+
+                                if handler_message['state'] is not None:
+                                    if update['message']['from']['id'] not in StatesGroup.user_registers:
+                                        continue
+
+                                    if handler_message['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
+                                        continue
+
+                                message = Message(update['message'], self)
                             parameters = [message]
-                            if handler_message['state'] is not None: parameters.append(StatesGroup.variables[handler_message['state'].state_name].get_state(update['message']['chat']['id'], update['message']['from']['id']))
+                            parameters.append(FSMContext(message.from_user.id))
+                            
+                            is_method = inspect.ismethod(handler_message['func'])
+                            _parameters = list(inspect.signature(handler_message['func']).parameters)
+
+                            if is_method and len(_parameters) > 0: _parameters.pop(0)
+
+                            if len(_parameters) == 1: parameters.pop(1)
+
                             if threaded_run:
                                 executor.submit(self._coroutine_run_with_thread, handler_message['func'], *parameters)
                             else:
                                 await handler_message['func'](*parameters)
-                            
-                            break
-                    elif update.get('callback_query', False):
-                        for indx, step in enumerate(self._query_next_step_handlers):
-                            if str(update['callback_query']['message']['chat']['id']) == step[0]:
-                                if threaded_run:
-                                    executor.submit(self._coroutine_run_with_thread, step[1], CallbackQuery(update['callback_query'], self), *step[2])
-                                else:
-                                    await step[1](CallbackQuery(update['callback_query'], self), *step[2])
                                 
-                                self._query_next_step_handlers.pop(indx)
-                                break
+                            break
+                        elif update.get('callback_query', False):
+                            for indx, step in enumerate(self._query_next_step_handlers):
+                                if str(update['callback_query']['message']['chat']['id']) == step[0]:
+                                    if threaded_run:
+                                        executor.submit(self._coroutine_run_with_thread, step[1], CallbackQuery(update['callback_query'], self), *step[2])
+                                    else:
+                                        await step[1](CallbackQuery(update['callback_query'], self), *step[2])
+                                    
+                                    self._query_next_step_handlers.pop(indx)
+                                    break
 
-                        for callback in self._callback_query_handlers:
-                            if callback['filters'] is not None and not callback['filters'](CallbackQuery(update['callback_query'], self)):
-                                continue
-
-                            if isinstance(callback['allowed_chat_type'], str):
-                                if update['callback_query']['chat']['type'] != callback['allowed_chat_type']:
+                            for callback in self._callback_query_handlers:
+                                if callback['filters'] is not None and not callback['filters'](CallbackQuery(update['callback_query'], self)):
                                     continue
-                            elif isinstance(callback['allowed_chat_type'], (tuple, list)):
-                                if not any(update['callback_query']['chat']['type'] == _chat_type for _chat_type in callback['allowed_chat_type']):
-                                    continue
 
-                            if callback['state'] is not None:
-                                if not StatesGroup.variables[callback['state'].state_name].get_state(update['callback_query']['chat']['id'], update['callback_query']['from']['id']):
-                                    try:
-                                        if (callback['state'].regexp is not None and re.match(callback['state'].regexp, str(StatesGroup.variables[callback['state'].state_name].get_state(update['callback_query']['chat']['id'], update['callback_query']['from']['id'])) is None)):
-                                            continue
-                                    except TypeError:
+                                if isinstance(callback['allowed_chat_type'], str):
+                                    if update['callback_query']['chat']['type'] != callback['allowed_chat_type']:
                                         continue
-                            
-                            callback_query = CallbackQuery(update['callback_query'], self)
+                                elif isinstance(callback['allowed_chat_type'], (tuple, list)):
+                                    if not any(update['callback_query']['chat']['type'] == _chat_type for _chat_type in callback['allowed_chat_type']):
+                                        continue
+
+                                if callback['state'] is not None:
+                                    if update['message']['from']['id'] not in StatesGroup.user_registers:
+                                        continue
+
+                                    if callback['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
+                                        continue
+                                
+                                callback_query = CallbackQuery(update['callback_query'], self)
                             parameters = [callback_query]
-                            if callback['state'] is not None: parameters.append(StatesGroup.variables[callback['state'].state_name].get_state(update['callback_query']['chat']['id'], update['callback_query']['from']['id']))
+                            parameters.append(FSMContext(callback_query.from_user.id))
+
+                            is_method = inspect.ismethod(callback['func'])
+                            _parameters = list(inspect.signature(callback['func']).parameters)
+
+                            if is_method and len(_parameters) > 0: _parameters.pop(0)
+
+                            if len(_parameters) == 1: parameters.pop(1)
 
                             if threaded_run:
                                 executor.submit(self._coroutine_run_with_thread, callback['func'], *parameters)
@@ -966,50 +1153,48 @@ class AsyncBot:
                                 await callback['func'](*parameters)
                             
                             break
-                    elif update.get('poll', False):
-                        for poll in self._poll_handlers:
-                            if poll['filters'] is not None and not poll['filters'](Poll(update['poll'])):
-                                continue
+                        elif update.get('poll', False):
+                            for poll in self._poll_handlers:
+                                if poll['filters'] is not None and not poll['filters'](Poll(update['poll'])):
+                                    continue
 
-                            if isinstance(poll['allowed_chat_type'], list):
-                                if not any(_chat_type == update['poll']['chat']['type'] for _chat_type in poll['allowed_chat_type']):
-                                    continue
-                            elif isinstance(poll['allowed_chat_type'], str):
-                                if update['poll']['chat']['type'] != poll['allowed_chat_type']:
-                                    continue
-                            
-                            if poll['state'] is not None:
-                                if not StatesGroup.variables[poll['state'].state_name].get_state(update['poll']['chat']['id'], update['poll']['from']['id']):
-                                    try:
-                                        if poll['state'].regexp is not None and re.match(poll['state'].regexp, str(StatesGroup.variables[poll['state'].state_name].get_state(update['poll']['chat']['id'], update['poll']['from']['id'])) is None):
-                                                continue
-                                    except TypeError:
+                                if isinstance(poll['allowed_chat_type'], list):
+                                    if not any(_chat_type == update['poll']['chat']['type'] for _chat_type in poll['allowed_chat_type']):
                                         continue
-                            
-                            _poll = Poll(update['poll'])
-                            parameters = [_poll]
-                            if poll['state'] is not None: parameters.append(StatesGroup.variables[poll['state'].state_name].get_state(update['poll']['chat']['id'], update['poll']['from']['id']))
+                                elif isinstance(poll['allowed_chat_type'], str):
+                                    if update['poll']['chat']['type'] != poll['allowed_chat_type']:
+                                        continue
+                                
+                                if poll['state'] is not None:
+                                    if update['message']['from']['id'] not in StatesGroup.user_registers:
+                                        continue
 
-                            try:
+                                    if poll['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
+                                        continue
+                                
+                                _poll = Poll(update['poll'])
+
                                 if threaded_run:
-                                    executor.submit(poll['func'], *parameters)
+                                    executor.submit(poll['func'], _poll)
                                 else:
-                                    poll['func'](*parameters)
-                            except SyntaxError as e:
-                                if "'await' outside function" in str(e):
-                                    raise SyntaxError('В вашей функции вы вызываете асинхронную функция.Провертье ваш код на наличии EasyGram.Async.types')
-                                else:
-                                    raise SyntaxError(str(e))
-                except Exception as e:
-
-                    traceback.print_exc()
+                                    poll['func'](_poll)
+                                
+                                break
+        except Exception as e:
+            self.logger.error(traceback.format_exc())
 
     def executor(self, on_startup: Callable=None, threaded_run: bool=False, thread_max_works: int=10, *args) -> None:
         """
-        Удобный способ запуска бота.
-        :param on_startup: Функция, которая будет вызвана при запуске опроса (например, для инициализации).
-        :param args: Дополнительные аргументы, которые будут переданы в функцию on_startup.
-        :return: Ничего не возвращает.
+        Запускает бота с возможностью использования многопоточности.
+
+        Args:
+            on_startup (Callable, optional): Функция, вызываемая при запуске.
+            threaded_run (bool, optional): Если True, используется многопоточность.
+            thread_max_works (int, optional): Максимальное количество потоков.
+            args: Дополнительные аргументы.
+
+        Returns:
+            None
         """
         
         if on_startup is not None: asyncio.run(on_startup)

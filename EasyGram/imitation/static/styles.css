@@ -50,11 +50,11 @@
 }
 
 #sendMessage {
-	position: absolute;
+	display: flex;
 	width: 55px;
 	height: 39px;
-	top: calc(100% - 71px);
-	margin-left: 1019px;
+	justify-content: end;
+	align-items: end;
 	border: 1px solid black;
 	border-top-right-radius: 15px;
 	border-bottom-right-radius: 15px;
@@ -69,11 +69,11 @@
 }
 
 #sendMessage:hover::after {
+	display: flex;
+	justify-content: center;
+	align-items: center;
 	background-color: lightgray;
 	content: '';
-    position: absolute;
-    left: 10px;
-    top: 2px;
     background-color: rgba(211, 211, 211, 0.5);
     z-index: 1;
     border-radius: 15px;

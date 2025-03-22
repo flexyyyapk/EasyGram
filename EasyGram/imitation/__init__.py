@@ -17,7 +17,7 @@ BotCommandScopeAllGroupChats,
 BotCommandScopeAllPrivateChats,
 BotCommandScopeChatAdministrators,
 InputFile,
-InputPollOption
+PollOption
 )
 from ..exception import Telegram
 from concurrent.futures import ThreadPoolExecutor
@@ -172,7 +172,7 @@ class ExampleBot:
 
         return True
 
-    def send_poll(self, chat_id: Union[int, str], question: Union[int, float, str], options: Union[List[InputPollOption], List[str]], question_parse_mode: Union[str, ParseMode]=None, is_anonymous: bool=True, type: str='regular', allows_multiple_answers: bool=False, correct_option_id: int=0, explanation: str=None, explanation_parse_mode: Union[str, ParseMode]=None, open_period: int=None, is_closed: bool=False, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
+    def send_poll(self, chat_id: Union[int, str], question: Union[int, float, str], options: Union[List[PollOption], List[str]], question_parse_mode: Union[str, ParseMode]=None, is_anonymous: bool=True, type: str='regular', allows_multiple_answers: bool=False, correct_option_id: int=0, explanation: str=None, explanation_parse_mode: Union[str, ParseMode]=None, open_period: int=None, is_closed: bool=False, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, reply_to_message_id: int=None) -> Message:
         self.message_id += 1
         parameters = {
             "question": question,

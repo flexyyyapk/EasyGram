@@ -1,4 +1,3 @@
-from .utils import CheckDict
 from typing import Optional, Union, List, BinaryIO, Callable
 import requests
 from .exception import ButtonParameterErorr, Telegram
@@ -8,24 +7,28 @@ from pathlib import Path
 import json
 
 class GetMe:
+    """
+    Этот класс используется для получения информации о боте.
+    :param bot: Объект бота.
+    """
     def __init__(self, bot):
         self.id: int = requests.get(f'https://api.telegram.org/bot{bot.token}/getMe').json()['result']['id']
         self.other = requests.get(f'https://api.telegram.org/bot{bot.token}/getMe').json()['result']
 
 class KeyboardButton:
     """
-    Keyboard object.
-    :param text: name
-    :return: self
+    Этот класс используется для создания кнопки клавиатуры.
+    :param text: Текст кнопки.
+    :return: Созданная кнопка.
     """
     def __init__(self, text: Union[int, float, str]):
         self.keyboard = {'text': text}
 
 class ReplyKeyboardMarkup:
     """
-    ReplyKeyboardMarkup object.
-    :param width: row length
-    :param resize_keyboard: resize keyboard
+    Этот класс используется для создания клавиатуры ответа.
+    :param row_width: Количество кнопок в каждом ряду.
+    :param resize_keyboard: Должна ли клавиатура изменять размер.
     """
     def __init__(self, row_width: int=3, resize_keyboard: bool=False):
         self.rows = []
@@ -34,8 +37,8 @@ class ReplyKeyboardMarkup:
 
     def add(self, *args: Union[str, KeyboardButton]) -> None:
         """
-        Добавления Keyboard кнопки.
-        :param args: KeyboardButton object or text
+        Этот метод используется для добавления кнопки в клавиатуру.
+        :param args: Кнопки для добавления.
         :return: None
         """
         _butt = []
@@ -54,14 +57,13 @@ class ReplyKeyboardMarkup:
                 self.rows.append(_butt)
 
 class InlineKeyboardButton:
+    """
+    Этот класс используется для создания кнопки встроенной клавиатуры.
+    :param text: Текст кнопки.
+    :param url: URL, который должна открыть кнопка.
+    :param callback_data: Данные, которые должны быть отправлены при нажатии на кнопку.
+    """
     def __init__(self, text: Union[int, float, str], url: str=None, callback_data: str=None):
-        """
-        Объект кнопки.
-        :param text:Текст кнопки
-        :param url:Ссылка кнопки
-        :param callback_data:Обратный вызов который можно обработать с помощью декоратора EasyGram.SyncBot.callback_query
-        :param onClick:Вызывает функцию при нажатии на эту кнопку
-        """
         self.keyboard = {'text': text}
 
         if url is None and callback_data is None:
@@ -76,6 +78,10 @@ class InlineKeyboardButton:
             self.keyboard.update({'callback_data': callback_data})
 
 class InlineKeyboardMarkup:
+    """
+    Этот класс используется для создания встроенной клавиатуры.
+    :param row_with: Количество рядов в клавиатуре.
+    """
     def __init__(self, row_width: int=3):
         self.rows = []
         self.row_width = row_width
@@ -83,8 +89,8 @@ class InlineKeyboardMarkup:
 
     def add(self, *args: InlineKeyboardButton) -> None:
         """
-        Добавления Inline Кнопки.
-        :param args: InlineKeyboardButton object
+        Этот метод используется для добавления кнопки встроенной клавиатуры.
+        :param args: Кнопки для добавления.
         :return: None
         """
         _butt = []
@@ -101,21 +107,24 @@ class InlineKeyboardMarkup:
                 self.rows.append(_butt)
     def add_tostorage(self, *args: InlineKeyboardButton) -> None:
         """
-        Добавляет кнопки в список, чтобы можно было массово добавить в один ряд
-        :param args: InlineKeyboardButton object.
+        Этот метод используется для добавления кнопок в хранилище, чтобы их можно было добавить в один ряд.
+        :param args: Кнопки для добавления.
         :return: None
         """
         if not args: return None
         self.storage.extend(args)
     def add_keyboards(self) -> None:
         """
-        Добавляет массово в один ряд из хранилища
+        Этот метод используется для добавления всех кнопок в хранилище в один ряд.
         :return: None
         """
         self.add(*self.storage)
         self.storage = []
 
 class ParseMode:
+    """
+    Этот класс используется для форматирования текста.
+    """
     def __init__(self):
         self.html: str = 'html'
         self.markdown: str = 'markdown'
@@ -155,6 +164,11 @@ class ParseMode:
         return f'<pre><code class="{lang}">' + text + '</code></pre>'
 
 class PollOption:
+    """
+    Этот класс используется для создания варианта ответа.
+    :param text: Текст опции.
+    :param text_parse_mode: Форматирования текста.
+    """
     def __init__(self, text: Union[int, float, str], text_parse_mode: Union[str, ParseMode]=None):
         if len(text) > 1_000:
             try:
@@ -167,6 +181,10 @@ class PollOption:
         self.text_parse_mode = text_parse_mode
 
 class InputFile:
+    """
+    Этот класс используется для безопасной вставки файла.
+    :param file: Байт или объект класса Path.
+    """
     def __init__(self, file: Union[IOBase, BinaryIO, BytesIO, Path]):
         if isinstance(file, (IOBase, BinaryIO, BytesIO)):
             self.file = file
@@ -180,6 +198,9 @@ class InputFile:
             raise TypeError('Unknow file type')
 
 class ChatAction:
+    """
+    Этот класс используется для выполнения действий в чате.
+    """
     TYPING = 'typing'
     UPLOAD_PHOTO = 'upload_photo'
     RECORD_VIDEO = 'record_video'
@@ -204,6 +225,10 @@ class ChatAction:
     upload_video_note = 'upload_video_note'
 
 class Poll:
+    """
+    Этот класс используется для создания опроса.
+    :param poll: Опрос.
+    """
     def __init__(self, poll: dict):
         self.id: Optional[int] = poll.get('id', None)
         self.question: Optional[str] = poll.get('question', None)
@@ -240,15 +265,17 @@ class Poll:
 
 class Message:
     """
-    Message object.
+    Класс Message.
+    :param message: сообщение
+    :param bot: объект бота
     """
     def __init__(self, message: dict, bot):
         self.message_id: Optional[int] = message.get('message_id', None)
-        self.from_user: Optional[User] = User(message['from']) if CheckDict(message, 'from') else None
-        self.chat: Optional[Chat] = Chat(message['chat']) if CheckDict(message, 'chat') else None
+        self.from_user: Optional[User] = User(message['from']) if message.get('from', False) else None
+        self.chat: Optional[Chat] = Chat(message['chat']) if message.get('chat', False) else None
         self.date: Optional[int] = message.get('date', None)
         self.text: Optional[str] = message.get('text', None)
-        self.reply_to_message: Optional[Message] = Message(message['reply_to_message'], bot) if CheckDict(message, 'reply_to_message') else None
+        self.reply_to_message: Optional[Message] = Message(message['reply_to_message'], bot) if message.get('reply_to_message', False) else None
         self.is_bot: Optional[bool] = message.get('is_bot', None)
         self._other: dict = message
 
@@ -319,8 +346,8 @@ class CallbackQuery:
         except:
             pass
         self.message: Optional[Message] = Message(callback_query.get('message', None), bot)
-        self.from_user: Optional[User] = User(callback_query['from']) if CheckDict(callback_query, 'from') else None
-        self.chat: Optional[Chat] = Chat(callback_query['message']['chat']) if CheckDict(callback_query['message'], 'chat') else None
+        self.from_user: Optional[User] = User(callback_query['from']) if callback_query.get('from', False) else None
+        self.chat: Optional[Chat] = Chat(callback_query['message']['chat']) if callback_query.get('message', {}).get('chat', False) else None
         self.data: str = callback_query['data']
         self._other: dict = callback_query
 

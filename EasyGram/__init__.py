@@ -1,13 +1,17 @@
+"""
+Синхронная версия
+"""
+
 __name__ = 'EasyGram'
-__version__ = '0.0.3'
+__version__ = '0.0.4'
 
 import requests
-from typing import Union, Callable, Optional, BinaryIO, List, Tuple
+from typing import Union, Callable, List, Tuple
 import traceback
 
 from .types import (
     Message,
-    GetMe,
+    User,
     ReplyKeyboardMarkup,
     InlineKeyboardMarkup,
     CallbackQuery,
@@ -32,9 +36,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 import traceback
 
-from .state import StateRegExp, StateException, StatesGroup
+from .state import StatesGroup, FSMContext, State
 
-import re
+import logging
+
+import inspect
 
 __all__ = [
     'ParseMode',
@@ -64,25 +70,57 @@ class SyncBot:
     _message_handlers = []
     _callback_query_handlers = []
     _next_step_handlers = []
+    _query_next_step_handlers = []
     _poll_handlers = []
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, log_level: int=logging.INFO):
+        """
+        Args:
+            token (str): Токен для аутентификации запросов к API Telegram.
+            log_level (int): Уровень логирования.
+        """
         self.token = token
 
-    def get_me(self) -> GetMe:
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(log_level)
+
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        self.logger.addHandler(console_handler)
+    
+        try:
+            response = requests.get(f'https://api.telegram.org/bot{self.token}/getMe').json()
+        except (TimeoutError, requests.HTTPError, ConnectionError) as e:
+            raise ConnectionError('Connection error')
+        except Exception as e:
+            raise Telegram('The token is incorrectly set.')
+
+        self.logger.debug(f'The bot is launched with user name @{response["result"]["username"]}')
+
+    def get_me(self) -> User:
         """
-        Информация о боте.
-        :return: GetMe object
+        Получает информацию о боте из Telegram.
+
+        Returns:
+            User: Объект, представляющий бота.
         """
-        return GetMe(self)
+        response = requests.get(f'https://api.telegram.org/bot{self.token}/getMe')
+
+        return User(response.json()['result'])
 
     def set_my_commands(self, commands: List[BotCommand], scope: Union[BotCommandScopeChat, BotCommandScopeDefault, BotCommandScopeChatMember, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChatAdministrators, BotCommandScopeAllChatAdministrators]=None, language_code: str=None) -> bool:
         """
-        Установка команд в меню команд.
-        :param commands: команды
-        :param scope: в каком окружении установится команды
-        :param language_code: языковой код
-        :return: True or False
+        Устанавливает команды для бота.
+
+        Args:
+            commands (List[BotCommand]): Список команд для установки.
+            scope (Union[BotCommandScopeChat, BotCommandScopeDefault, etc.], optional): Область видимости команд.
+            language_code (str, optional): Код языка для локализации команд.
+
+        Returns:
+            bool: Возвращает True, если команды успешно установлены.
         """
         parameters = {
             'commands': [{'command': command.command, 'description': command.description} for command in commands]
@@ -107,13 +145,17 @@ class SyncBot:
 
     def send_message(self, chat_id: Union[int, str], text: Union[int, float, str], reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: Union[str, ParseMode]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка сообщений.
-        :param chat_id: Айди чата
-        :param text: Текст
-        :param reply_markup: Кнопки ReplyKeyboardMarkup или InlineKeyboardMarkup
-        :param parse_mode: Форматирования текста
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет текстовое сообщение пользователю или в чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            text (Union[int, float, str]): Текст сообщения.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура для сообщения.
+            parse_mode (str, optional): Режим форматирования текста.
+            reply_to_message_id (int, optional): Если указан, сообщение будет отправлено как ответ на указанное сообщение.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             'chat_id': chat_id,
@@ -141,14 +183,19 @@ class SyncBot:
 
     def send_photo(self, chat_id: Union[int, str], photo: Union[InputFile], caption: Union[int, float, str]=None, reply_markup: Union[ReplyKeyboardMarkup, InlineKeyboardMarkup]=None, parse_mode: Union[str, ParseMode]=None, reply_to_message_id: int=None) -> Message:
         """
-        Отправка фото
-        :param chat_id: Айди чата
-        :param photo: Фото
-        :param caption: Описание
-        :param reply_markup: Кнопка
-        :param parse_mode: Тип форматирования
-        :param reply_to_message_id: Ответ на сообщение
-        :return: Message
+        Отправляет фотографию в чат.
+
+        Args:
+            chat_id (Union[int, str]): Идентификатор чата.
+            photo (Union[InputFile]): Файл фотографии.
+            caption (Union[int, float, str], optional): Подпись к фотографии.
+            reply_markup (Union[ReplyKeyboardMarkup, InlineKeyboardMarkup], optional): Клавиатура для сообщения.
+            parse_mode (str, optional): Режим форматирования текста подписи.
+            photo_name (str, optional): Имя файла фотографии.
+            reply_to_message_id (int, optional): Если указан, сообщение будет отправлено как ответ на указанное сообщение.
+
+        Returns:
+            Message: Объект сообщения, отправленного ботом.
         """
         parameters = {
             "chat_id": chat_id
@@ -179,22 +226,26 @@ class SyncBot:
 
         return Message(response.json()['result'], self)
 
-    def message(self, _filters: Callable[[Message], any]=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> Callable:
+    def message(self, _filters: Callable[[Message], any]=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> Callable:
         """
         Декоратор для обработки входящих сообщений.
-        :param _filters: лямбда
-        :param content_types: тип сообщения
-        :param commands: команды(без префикса)
-        :param allowed_chat_type: тип группы
-        :param state: объект класса StateRegExp
-        :return: Функцию которую нужно вызвать
+
+        Args:
+            _filters (Callable[[Message], any], optional): Функция фильтрации сообщений.
+            content_types (Union[str, List[str]], optional): Типы контента, которые должен обрабатывать обработчик.
+            commands (Union[str, List[str]], optional): Команды, на которые должен реагировать обработчик.
+            allowed_chat_type (Union[List[str], Tuple[str], str], optional): Типы чатов, в которых активен обработчик.
+            state (StateRegExp, optional): Состояние в контексте машины состояний.
+
+        Returns:
+            Callable: Функция-обертка, которая регистрирует обработчик сообщений.
         """
 
         def wrapper(func):
             self._message_handlers.append({'func': func, 'filters': _filters, 'content_types': content_types, 'commands': commands, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
 
-    def message_handler(self, _filters: Callable[[Message], any]=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> Callable:
+    def message_handler(self, _filters: Callable[[Message], any]=None, content_types: Union[str, List[str]]=None, commands: Union[str, List[str]]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> Callable:
         """
         Декоратор для обработки входящих сообщений.Для миграции из pyTelegramBotAPI в EasyGram
         :param _filters: лямбда
@@ -209,7 +260,7 @@ class SyncBot:
             self._message_handlers.append({'func': func, 'filters': _filters, 'content_types': content_types, 'commands': commands, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
 
-    def callback_query(self, _filters: Callable[[CallbackQuery], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> Callable:
+    def callback_query(self, _filters: Callable[[CallbackQuery], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> Callable:
         """
         Декоратор для обработки вызовов InlineKeyboardMarkup кнопки.
         :param _filters: лямбда
@@ -222,7 +273,7 @@ class SyncBot:
             self._callback_query_handlers.append({'func': func, 'filters': _filters, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
 
-    def callback_query_handler(self, _filters: Callable[[CallbackQuery], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> Callable:
+    def callback_query_handler(self, _filters: Callable[[CallbackQuery], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> Callable:
         """
         Декоратор для обработки вызовов InlineKeyboardMarkup кнопки.Для миграции из pyTelegramBotAPI в EasyGram
         :param _filters: лямбда
@@ -235,7 +286,7 @@ class SyncBot:
             self._callback_query_handlers.append({'func': func, 'filters': _filters, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
     
-    def poll_handler(self, _filters: Callable[[Poll], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> None:
+    def poll_handler(self, _filters: Callable[[Poll], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> None:
         """
         Декоратор для обработки опросов.Для миграции из pyTelegramBotAPI в EasyGram
         :param _filters: лямбда
@@ -248,7 +299,7 @@ class SyncBot:
             self._poll_handlers.append({'func': func, 'filters': _filters, 'allowed_chat_type': allowed_chat_type, 'state': state})
         return wrapper
     
-    def poll(self, _filters: Callable[[Poll], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: StateRegExp=None) -> None:
+    def poll(self, _filters: Callable[[Poll], any]=None, allowed_chat_type: Union[str, List[str], Tuple[str]]=None, state: State=None) -> None:
         """
         Декоратор для обработки опросов.Для миграции из pyTelegramBotAPI в EasyGram
         :param _filters: лямбда
@@ -761,6 +812,16 @@ class SyncBot:
         :return: None
         """
         self._next_step_handlers.append((str(chat_id), callback, args))
+    
+    def query_next_step_handler(self, chat_id: int, callback: Callable, *args):
+        """
+        Ставит 'триггер'.Как только определённый пользователь нажмёт на Inline кнопку вызывается функция.
+        :param chat_id: Айди чата.
+        :param callback: Функция.
+        :param args: Параметры к функции.
+        :return: None
+        """
+        self._query_next_step_handlers.append((str(chat_id), callback, args))
 
     def polling(self, on_startup: Callable=None, threaded_run: bool=False, thread_max_works: int=10, *args) -> None:
         """
@@ -778,7 +839,11 @@ class SyncBot:
             executor = ThreadPoolExecutor(thread_max_works)
 
         while True:
-            updates = requests.get(f'https://api.telegram.org/bot{self.token}/getUpdates', params={"offset": self.offset})
+            try:
+                updates = requests.get(f'https://api.telegram.org/bot{self.token}/getUpdates', params={"offset": self.offset, "timeout": 30, "allowed_updates": ["message", "callback_query", "poll"]}, timeout=35)
+            except Exception as e:
+                traceback.print_exc()
+                continue
 
             if updates.status_code != 200:
                 continue
@@ -827,26 +892,42 @@ class SyncBot:
                                 if not any(update['message']['chat']['type'] == _chat_type for _chat_type in handler_message['allowed_chat_type']):
                                     continue
                             
+                            # FIXME: доделать проверку состояния
                             if handler_message['state'] is not None:
-                                if not StatesGroup.variables[handler_message['state'].state_name].get_state(update['message']['chat']['id'], update['message']['from']['id']) and (handler_message['state'].reg_exp is not None and re.search(handler_message['state'].reg_exp, str(StatesGroup.variables[handler_message['state'].state_name].get_state(update['message']['chat']['id'], update['message']['from']['id'])) is None)):
+                                if update['message']['from']['id'] not in StatesGroup.user_registers:
+                                    continue
+
+                                if handler_message['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
                                     continue
 
                             message = Message(update['message'], self)
                             parameters = [message]
-                            if handler_message['state'] is not None: parameters.append(StatesGroup.variables[handler_message['state'].state_name].get_state(update['message']['chat']['id'], update['message']['from']['id']))
-                            try:
-                                if threaded_run:
-                                    executor.submit(handler_message['func'], *parameters)
-                                else:
-                                    handler_message['func'](*parameters)
-                            except SyntaxError as e:
-                                if "'await' outside function" in str(e):
-                                    raise SyntaxError('В вашей функции вы вызываете асинхронную функция.Провертье ваш код на наличии EasyGram.Async.types')
-                                else:
-                                    raise SyntaxError(str(e))
+                            parameters.append(FSMContext(message.from_user.id))
+                            
+                            is_method = inspect.ismethod(handler_message['func'])
+                            _parameters = list(inspect.signature(handler_message['func']).parameters)
+
+                            if is_method and len(_parameters) > 0: _parameters.pop(0)
+
+                            if len(_parameters) == 1: parameters.pop(1)
+                            
+                            if threaded_run:
+                                executor.submit(handler_message['func'], *parameters)
+                            else:
+                                handler_message['func'](*parameters)
                             
                             break
                     elif update.get('callback_query', False):
+                        for indx, step in enumerate(self._query_next_step_handlers):
+                            if str(update['message']['chat']['id']) == step[0]:
+                                if threaded_run:
+                                    executor.submit(step[1], CallbackQuery(update['callback_queyr'], self), *step[2])
+                                else:
+                                    step[1](CallbackQuery(update['callback_queyr'], self), *step[2])
+                                
+                                self._queyr_next_step_handlers.pop(indx)
+                                break
+
                         for callback in self._callback_query_handlers:
                             if callback['filters'] is not None and not callback['filters'](Message(update['callback_query'], self)):
                                 continue
@@ -859,22 +940,27 @@ class SyncBot:
                                     continue
                             
                             if callback['state'] is not None:
-                                if not StatesGroup.variables[callback['state'].state_name].get_state(update['callback_query']['chat']['id'], update['callback_query']['from']['id']) and (callback['state'].regexp is not None and re.match(callback['state'].regexp, str(StatesGroup.variables[callback['state'].state_name].get_state(update['callback_query']['chat']['id'], update['callback_query']['from']['id'])) is None)):
+                                if update['message']['from']['id'] not in StatesGroup.user_registers:
+                                    continue
+
+                                if callback['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
                                     continue
                             
                             callback_query = CallbackQuery(update['callback_query'], self)
                             parameters = [callback_query]
-                            if callback['state'] is not None: parameters.append(StatesGroup.variables[callback['state'].state_name].get_state(update['callback_query']['chat']['id'], update['callback_query']['from']['id']))
-                            try:
-                                if threaded_run:
-                                    executor.submit(callback['func'], *parameters)
-                                else:
-                                    callback['func'](*parameters)
-                            except SyntaxError as e:
-                                if "'await' outside function" in str(e):
-                                    raise SyntaxError('В вашей функции вы вызываете асинхронную функция.Провертье ваш код на наличии EasyGram.Async.types')
-                                else:
-                                    raise SyntaxError(str(e))
+                            parameters.append(FSMContext(callback_query.from_user.id))
+
+                            is_method = inspect.ismethod(callback['func'])
+                            _parameters = list(inspect.signature(callback['func']).parameters)
+
+                            if is_method and len(_parameters) > 0: _parameters.pop(0)
+
+                            if len(_parameters) == 1: parameters.pop(1)
+
+                            if threaded_run:
+                                executor.submit(callback['func'], *parameters)
+                            else:
+                                callback['func'](*parameters)
                             
                             break
                     elif update.get('poll', False):
@@ -890,26 +976,21 @@ class SyncBot:
                                     continue
                             
                             if poll['state'] is not None:
-                                if not StatesGroup.variables[poll['state'].state_name].get_state(update['poll']['chat']['id'], update['poll']['from']['id']) and (poll['state'].regexp is not None and re.match(poll['state'].regexp, str(StatesGroup.variables[poll['state'].state_name].get_state(update['poll']['chat']['id'], update['poll']['from']['id'])) is None)):
+                                if update['message']['from']['id'] not in StatesGroup.user_registers:
+                                    continue
+
+                                if poll['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
                                     continue
                             
                             _poll = Poll(update['poll'])
-                            parameters = [poll]
-                            if poll['state'] is not None: parameters.append(StatesGroup.variables[poll['state'].state_name].get_state(update['poll']['chat']['id'], update['poll']['from']['id']))
 
-                            try:
-                                if threaded_run:
-                                    executor.submit(poll['func'], *parameters)
-                                else:
-                                    poll['func'](*parameters)
-                            except SyntaxError as e:
-                                if "'await' outside function" in str(e):
-                                    raise SyntaxError('В вашей функции вы вызываете асинхронную функция.Провертье ваш код на наличии EasyGram.Async.types')
-                                else:
-                                    raise SyntaxError(str(e))
+                            if threaded_run:
+                                executor.submit(poll['func'], _poll)
+                            else:
+                                poll['func'](_poll)
                             break
                 except Exception as e:
-                    traceback.print_exc()
+                    self.logger.error(traceback.format_exc())
     
     def start_polling(self, on_startup: Callable=None, threaded_run: bool=False, thread_max_works: int=10, *args) -> None:
         if args:

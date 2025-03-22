@@ -1,18 +1,13 @@
-from setuptools import setup, find_packages
-
-setup(
-    name='EasyGram',
-    version='0.0.4',
-    description='Библиотека для удобного и многофункционального(в будущем) использования.',
-    long_description="""
 Установить:
+
 ```bash
-pip install EasyGram
+pip install git+https://github.com/flexyyyapk/EasyGram.git
 ```
 
 ## Быстрый старт
 
 #### Эхо бот(синхронный)
+
 ```python
 from EasyGram import SyncBot, types
 
@@ -26,6 +21,7 @@ bot.polling()
 ```
 
 #### Эхо бот(асинхронный)
+
 ```python
 from EasyGram.Async import AsyncBot, types
 
@@ -41,6 +37,7 @@ bot.executor()
 ---
 
 #### Бот рандомайзер(синхронный):
+
 ```python
 from EasyGram import SyncBot, types
 from random import randint
@@ -52,7 +49,7 @@ def start(message: types.Message):
 	#Делаем маленькую кнопку
 	button = types.ReplyKeyboardMarkup(resize_keyboard=True)
 	button.add('От 1 до 10')
-	
+
 	message.answer('Привет!', reply_markup=button)
 
 @bot.message(lambda message: message.text == 'От 1 до 10')
@@ -62,8 +59,8 @@ def random_number(message: types.Message):
 bot.polling()
 ```
 
-
 #### Бот рандомайзер(асинхронный)
+
 ```python
 from EasyGram.Async import AsyncBot, types
 from random import randint
@@ -75,7 +72,7 @@ async def start(message: types.Message):
 	#Делаем маленькую кнопку
 	button = types.ReplyKeyboardMarkup(resize_keyboard=True)
 	button.add('От 1 до 10')
-	
+
 	await message.answer('Привет!', reply_markup=button)
 
 @bot.message(lambda message: message.text == 'От 1 до 10')
@@ -85,39 +82,23 @@ async def random_number(message: types.Message):
 bot.executor()
 ```
 
-## Что нового?
+#### Бот для профиля(синхронный)
 
-С новой версии `0.0.4`:
+```python
+from EasyGram import SyncBot, types
+from EasyGram.state import State, StatesGroup, StateRegExp
 
-- Убран StatesRegExp
-- Оптимизирована работа кода
-- Добавлено больше аннотации
-- Добавлено логирование
-- Исправлена система в state
-- Добавлен класс state.FSMContext для удобного взаимодействия со state-ами
-- Убрана позорная функция CheckDict
+bot = SyncBot('Token here')
 
-## Что добавить ещё?
+class States(StatesGroup):
+	name = State()
+	age = State()
+	last_name = State()
+	room = State()
 
-Связаться:
+@bot.message(commands='start')
+def start(message: types.Message):
+	States.room.set_state(message.chat.id, message.from_user.id, 'Get name')
 
-- 📞💌Telegram channel: [Channel](https://t.me/oprosmenya)
-
-    """,
-    long_description_content_type='text/markdown',
-    author='flexyyy',
-    packages=find_packages(),
-    package_data={
-        "": ['readme.md']
-    },
-    install_requires=[
-        'aiohttp'
-    ],
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
-    python_requires='>=3.7',
-    url='https://github.com/flexyyyapk/EasyGram/'
-)
+bot.polling()
+```

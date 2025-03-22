@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Any, Optional
 
 class State:
     """
@@ -8,24 +8,10 @@ class State:
     var_name = None
 
     def __init__(self):
-        self.state_registry = {}
+        ...
 
-    def set_state(self, chat_id: int, user_id: int, value: any=None) -> None:
-        if chat_id in self.state_registry:
-            self.state_registry[chat_id][user_id] = value if value is not None else True
-        else:
-            self.state_registry[chat_id] = {user_id: value if value is not None else True}
-    
-    def get_state(self, chat_id: int, user_id: int) -> Union[any, bool]:
-        if chat_id in self.state_registry:
-            if user_id in self.state_registry[chat_id]:
-                return self.state_registry[chat_id][user_id]
-        return False
-
-    def remove_state(self, chat_id: int, user_id: int) -> None:
-        if chat_id in self.state_registry:
-            if user_id in self.state_registry[chat_id]:
-                del self.state_registry[chat_id][user_id]
+    def __str__(self) -> str:
+        return str(self.var_name)
 
 class StatesGroupMeta(type):
 
@@ -44,6 +30,7 @@ class StatesGroup(metaclass=StatesGroupMeta):
     Класс для хранения состояний пользователей.
     """
     variables = {}
+    user_registers = {}
 
     def __init_subclass__(cls):
         super().__init_subclass__()
@@ -52,32 +39,43 @@ class StatesGroup(metaclass=StatesGroupMeta):
             if isinstance(value, State):
                 value.class_name = cls.__name__
                 cls.variables[key] = value
+    
+    @classmethod
+    def set_state(cls, state: State, user_id: int, **kwargs) -> None:
+        cls.user_registers.update({int(user_id): {"state": state, "kwargs": kwargs}})
+    
+    @classmethod
+    def get_state(cls, user_id: int) -> str:
+        values = cls.user_registers.get(int(user_id), None)
+        return None if values is None else f'{values["state"]}'
+    
+    @classmethod
+    def get_value(cls, user_id: int) -> Optional[dict]:
+        values = cls.user_registers.get(int(user_id), None)
+        return None if values is None else values["kwargs"]
+
+    @classmethod
+    def remove_state(cls, user_id: int) -> None:
+        cls.user_registers.pop(int(user_id), None)
 
 class StateException(Exception):
     pass
 
-class StateRegExp:
-    """
-    Класс для регулярного выражения состояния или просто проверка состояния что он вообще есть у пользователя.
-    Пример:
-        Проверка состояния на регулярное выражение:
-            StateRegExp('имя состояния', 'регулярное выражение')
-        Проверка состояние с классом и с регулярным выражением:
-            class Test(StatesGroup):
-                name = State()
-            StateRegExp(Test.name, 'регулярное выражение')
-        Проверка состояния без регулярного выражения:
-            StateRegExp(Класс.имя_поля или 'имя состояния')
-    """
-    def __init__(self, state_name: Union[str, State], reg_exp: str=None):
-        if isinstance(state_name, State):
-            self.state_name = state_name.var_name
-        else:
-            self.state_name = state_name
-        self.reg_exp = reg_exp
-
-        if self.state_name not in StatesGroup.variables:
-            raise StateException(f'State {self.state_name} не найден.')
-
-    def __str__(self):
-        return f'{self.state_name}:{self.reg_exp}'
+class FSMContext:
+    def __init__(self, user_id: int):
+        self.user_id = int(user_id)
+    
+    def set_state(self, state: State, **kwargs) -> None:
+        StatesGroup.set_state(state, self.user_id, **kwargs)
+    
+    def get_state(self) -> str:
+        return StatesGroup.get_state(self.user_id)
+    
+    def get_value(self) -> Optional[dict]:
+        return StatesGroup.get_value(self.user_id)
+    
+    def finish(self) -> None:
+        StatesGroup.remove_state(self.user_id)
+    
+    def __str__(self) -> str:
+        return str(self.user_id)
