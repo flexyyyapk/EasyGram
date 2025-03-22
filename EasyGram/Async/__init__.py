@@ -44,9 +44,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 import json
 
-from ..state import StatesGroup, State
+from ..state import StatesGroup, State, FSMContext
 
 import logging
+
+import inspect
 
 __all__ = [
     'ParseMode',
@@ -82,8 +84,6 @@ class AsyncBot:
     _poll_handlers = []
     _query_next_step_handlers = []
 
-    __session__: aiohttp.ClientSession = aiohttp.ClientSession(connector=aiohttp.TCPConnector(keepalive_timeout=30))
-
     def __init__(self, token: str, log_level: int=logging.INFO):
         """
         Инициализирует AsyncBot с заданным токеном.
@@ -93,6 +93,8 @@ class AsyncBot:
             log_level (int): Уровень логирования.
         """
         self.token = token
+
+        self.__session__: aiohttp.ClientSession = aiohttp.ClientSession(connector=aiohttp.TCPConnector(keepalive_timeout=30))
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level)
@@ -1199,12 +1201,15 @@ class AsyncBot:
         
         if on_startup is not None: asyncio.run(on_startup)
 
-        if not threaded_run: asyncio.run(self.polling())
+        if not threaded_run:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self.polling())
         else:
             with ThreadPoolExecutor(thread_max_works) as executor:
                 executor.submit(self._coroutine_run_with_thread, self.polling, *args)
     def _coroutine_run_with_thread(self, func: Callable, *args):
         try:
-            asyncio.run(func(*args))
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self.polling())
         except Exception as e:
             traceback.print_exc()
