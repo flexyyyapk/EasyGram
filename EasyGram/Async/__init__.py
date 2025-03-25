@@ -84,7 +84,7 @@ class AsyncBot:
     _poll_handlers = []
     _query_next_step_handlers = []
 
-    def __init__(self, token: str, log_level: int=logging.INFO):
+    def __init__(self, token: str, log_level: int=logging.DEBUG):
         """
         Инициализирует AsyncBot с заданным токеном.
 
@@ -98,12 +98,6 @@ class AsyncBot:
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level)
-
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
 
         try:
             response = requests.get(f'https://api.telegram.org/bot{self.token}/getMe').json()
@@ -1035,64 +1029,65 @@ class AsyncBot:
             executor = ThreadPoolExecutor(thread_max_works)
 
         try:
-                while True:
-                    async with self.__session__.get(f'https://api.telegram.org/bot{self.token}/getUpdates', params={"offset": self.offset, "timeout": 30, "allowed_updates": ["message", "callback_query", "poll"]}, timeout=35) as response:
-                        if response.status != 200:
-                            continue
+            while True:
+                async with self.__session__.get(f'https://api.telegram.org/bot{self.token}/getUpdates', params={"offset": self.offset, "timeout": 30, "allowed_updates": ["message", "callback_query", "poll"]}, timeout=35) as response:
+                    if response.status != 200:
+                        continue
+                    
+                    updates = response
+
+                    updates = (await updates.json())["result"]
+
+                for update in updates:
+                    self.offset = update["update_id"] + 1
+
+                    if update.get('message', False):
                         
-                        updates = response
+                        for indx, step in enumerate(self._next_step_handlers):
+                            if str(update['message']['chat']['id']) == step[0]:
+                                if threaded_run:
+                                    executor.submit(self._coroutine_run_with_thread, step[1], Message(update['message'], self), *step[2])
+                                else:
+                                    await step[1](Message(update['message'], self), *step[2])
+                                
+                                self._next_step_handlers.pop(indx)
+                                break
+                        
+                        for handler_message in self._message_handlers:
+                            if handler_message['filters'] is not None and not handler_message['filters'](Message(update['message'], self)):
+                                continue
 
-                        updates = (await updates.json())["result"]
+                            if handler_message['commands'] is not None:
+                                if isinstance(handler_message['commands'], list) and update['message'].get('text', False):
+                                    if not any(update['message']['text'].split()[0] == '/'+command for command in handler_message['commands']):
+                                        continue
+                                elif isinstance(handler_message['commands'], str) and update['message'].get('text', False):
+                                    print(update['message'])
+                                    if not update['message']['text'].startswith('/'+handler_message['commands']):
+                                        continue
 
-                    for update in updates:
-                        self.offset = update["update_id"] + 1
-
-                        if update.get('message', False):
-                            
-                            for indx, step in enumerate(self._next_step_handlers):
-                                if str(update['message']['chat']['id']) == step[0]:
-                                    if threaded_run:
-                                        executor.submit(self._coroutine_run_with_thread, step[1], Message(update['message'], self), *step[2])
-                                    else:
-                                        await step[1](Message(update['message'], self), *step[2])
-                                    
-                                    self._next_step_handlers.pop(indx)
-                                    break
-                            
-                            for handler_message in self._message_handlers:
-                                if handler_message['filters'] is not None and not handler_message['filters'](Message(update['message'], self)):
+                            if isinstance(handler_message['content_types'], str):
+                                if not update['message'].get(handler_message['content_types'], False) or handler_message['content_types'] == 'any':
+                                    continue
+                            elif isinstance(handler_message['content_types'], list):
+                                if not any(update['message'].get(__type, False) for __type in handler_message['content_types']) or handler_message['content_types'] == 'any':
                                     continue
 
-                                if handler_message['commands'] is not None:
-                                    if isinstance(handler_message['commands'], list):
-                                        if not any(update['message']['text'].split()[0] == '/'+command for command in handler_message['commands']):
-                                            continue
-                                    elif isinstance(handler_message['commands'], str):
-                                        if not update['message']['text'].split()[0] == '/'+handler_message['commands']:
-                                            continue
+                            if isinstance(handler_message['allowed_chat_type'], str):
+                                if update['message']['chat']['type'] != handler_message['allowed_chat_type']:
+                                    continue
+                            elif isinstance(handler_message['allowed_chat_type'], (tuple, list)):
+                                if not any(update['message']['chat']['type'] == _chat_type for _chat_type in handler_message['allowed_chat_type']):
+                                    continue
 
-                                if isinstance(handler_message['content_types'], str):
-                                    if not update['message'].get(handler_message['content_types'], False) or handler_message['content_types'] == 'any':
-                                        continue
-                                elif isinstance(handler_message['content_types'], list):
-                                    if not any(update['message'].get(__type, False) for __type in handler_message['content_types']) or handler_message['content_types'] == 'any':
-                                        continue
+                            if handler_message['state'] is not None:
+                                if update['message']['from']['id'] not in StatesGroup.user_registers:
+                                    continue
 
-                                if isinstance(handler_message['allowed_chat_type'], str):
-                                    if update['message']['chat']['type'] != handler_message['allowed_chat_type']:
-                                        continue
-                                elif isinstance(handler_message['allowed_chat_type'], (tuple, list)):
-                                    if not any(update['message']['chat']['type'] == _chat_type for _chat_type in handler_message['allowed_chat_type']):
-                                        continue
+                                if handler_message['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
+                                    continue
 
-                                if handler_message['state'] is not None:
-                                    if update['message']['from']['id'] not in StatesGroup.user_registers:
-                                        continue
-
-                                    if handler_message['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
-                                        continue
-
-                                message = Message(update['message'], self)
+                            message = Message(update['message'], self)
                             parameters = [message]
                             parameters.append(FSMContext(message.from_user.id))
                             
@@ -1109,36 +1104,36 @@ class AsyncBot:
                                 await handler_message['func'](*parameters)
                                 
                             break
-                        elif update.get('callback_query', False):
-                            for indx, step in enumerate(self._query_next_step_handlers):
-                                if str(update['callback_query']['message']['chat']['id']) == step[0]:
-                                    if threaded_run:
-                                        executor.submit(self._coroutine_run_with_thread, step[1], CallbackQuery(update['callback_query'], self), *step[2])
-                                    else:
-                                        await step[1](CallbackQuery(update['callback_query'], self), *step[2])
-                                    
-                                    self._query_next_step_handlers.pop(indx)
-                                    break
+                    elif update.get('callback_query', False):
+                        for indx, step in enumerate(self._query_next_step_handlers):
+                            if str(update['callback_query']['message']['chat']['id']) == step[0]:
+                                if threaded_run:
+                                    executor.submit(self._coroutine_run_with_thread, step[1], CallbackQuery(update['callback_query'], self), *step[2])
+                                else:
+                                    await step[1](CallbackQuery(update['callback_query'], self), *step[2])
+                                
+                                self._query_next_step_handlers.pop(indx)
+                                break
 
-                            for callback in self._callback_query_handlers:
-                                if callback['filters'] is not None and not callback['filters'](CallbackQuery(update['callback_query'], self)):
+                        for callback in self._callback_query_handlers:
+                            if callback['filters'] is not None and not callback['filters'](CallbackQuery(update['callback_query'], self)):
+                                continue
+
+                            if isinstance(callback['allowed_chat_type'], str):
+                                if update['callback_query']['chat']['type'] != callback['allowed_chat_type']:
+                                    continue
+                            elif isinstance(callback['allowed_chat_type'], (tuple, list)):
+                                if not any(update['callback_query']['chat']['type'] == _chat_type for _chat_type in callback['allowed_chat_type']):
                                     continue
 
-                                if isinstance(callback['allowed_chat_type'], str):
-                                    if update['callback_query']['chat']['type'] != callback['allowed_chat_type']:
-                                        continue
-                                elif isinstance(callback['allowed_chat_type'], (tuple, list)):
-                                    if not any(update['callback_query']['chat']['type'] == _chat_type for _chat_type in callback['allowed_chat_type']):
-                                        continue
+                            if callback['state'] is not None:
+                                if update['message']['from']['id'] not in StatesGroup.user_registers:
+                                    continue
 
-                                if callback['state'] is not None:
-                                    if update['message']['from']['id'] not in StatesGroup.user_registers:
-                                        continue
-
-                                    if callback['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
-                                        continue
-                                
-                                callback_query = CallbackQuery(update['callback_query'], self)
+                                if callback['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
+                                    continue
+                            
+                            callback_query = CallbackQuery(update['callback_query'], self)
                             parameters = [callback_query]
                             parameters.append(FSMContext(callback_query.from_user.id))
 
@@ -1155,33 +1150,33 @@ class AsyncBot:
                                 await callback['func'](*parameters)
                             
                             break
-                        elif update.get('poll', False):
-                            for poll in self._poll_handlers:
-                                if poll['filters'] is not None and not poll['filters'](Poll(update['poll'])):
+                    elif update.get('poll', False):
+                        for poll in self._poll_handlers:
+                            if poll['filters'] is not None and not poll['filters'](Poll(update['poll'])):
+                                continue
+
+                            if isinstance(poll['allowed_chat_type'], list):
+                                if not any(_chat_type == update['poll']['chat']['type'] for _chat_type in poll['allowed_chat_type']):
+                                    continue
+                            elif isinstance(poll['allowed_chat_type'], str):
+                                if update['poll']['chat']['type'] != poll['allowed_chat_type']:
+                                    continue
+                            
+                            if poll['state'] is not None:
+                                if update['message']['from']['id'] not in StatesGroup.user_registers:
                                     continue
 
-                                if isinstance(poll['allowed_chat_type'], list):
-                                    if not any(_chat_type == update['poll']['chat']['type'] for _chat_type in poll['allowed_chat_type']):
-                                        continue
-                                elif isinstance(poll['allowed_chat_type'], str):
-                                    if update['poll']['chat']['type'] != poll['allowed_chat_type']:
-                                        continue
-                                
-                                if poll['state'] is not None:
-                                    if update['message']['from']['id'] not in StatesGroup.user_registers:
-                                        continue
+                                if poll['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
+                                    continue
+                            
+                            _poll = Poll(update['poll'])
 
-                                    if poll['state'] != StatesGroup.user_registers[update['message']['from']['id']]['state']:
-                                        continue
-                                
-                                _poll = Poll(update['poll'])
-
-                                if threaded_run:
-                                    executor.submit(poll['func'], _poll)
-                                else:
-                                    poll['func'](_poll)
-                                
-                                break
+                            if threaded_run:
+                                executor.submit(poll['func'], _poll)
+                            else:
+                                poll['func'](_poll)
+                            
+                            break
         except Exception as e:
             self.logger.error(traceback.format_exc())
 

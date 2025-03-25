@@ -3,7 +3,7 @@
 """
 
 __name__ = 'EasyGram'
-__version__ = '0.0.5b1'
+__version__ = '0.0.4.2'
 
 import requests
 from typing import Union, Callable, List, Tuple
@@ -73,7 +73,7 @@ class SyncBot:
     _query_next_step_handlers = []
     _poll_handlers = []
 
-    def __init__(self, token: str, log_level: int=logging.INFO):
+    def __init__(self, token: str, log_level: int=logging.DEBUG):
         """
         Args:
             token (str): Токен для аутентификации запросов к API Telegram.
@@ -83,12 +83,6 @@ class SyncBot:
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level)
-
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
     
         try:
             response = requests.get(f'https://api.telegram.org/bot{self.token}/getMe').json()
@@ -871,11 +865,11 @@ class SyncBot:
                                 continue
 
                             if handler_message['commands'] is not None:
-                                if isinstance(handler_message['commands'], list):
+                                if isinstance(handler_message['commands'], list) and update['message'].get('text', False):
                                     if not any(update['message']['text'].split()[0] == '/' + command for command in handler_message['commands']):
                                         continue
-                                elif isinstance(handler_message['commands'], str):
-                                    if not update['message']['text'].split()[0] == '/' + handler_message['commands']:
+                                elif isinstance(handler_message['commands'], str) and update['message'].get('text', False):
+                                    if not update['message']['text'].startswith('/'+handler_message['commands']):
                                         continue
 
                             if isinstance(handler_message['content_types'], str):
